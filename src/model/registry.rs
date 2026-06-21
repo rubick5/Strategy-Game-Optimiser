@@ -16,18 +16,20 @@ impl Registry {
 	pub fn get_pokemon(self: &Self, species_id: SpeciesId) -> &SpeciesData {
 		self.pokemon.get(species_id.0 as usize).unwrap()
 	}
-	
+
 	pub fn load() -> Self {
 		let frail_attacker = SpeciesData {
 			name: String::from("frail_attacker"),
+			base_hp: 80,
 			species_id: SpeciesId(0),
 			attack: 100,
-			defense: 20,
+			defense: 100,
 			speed: 90,
 		};
 	
 		let fat_defender = SpeciesData {
 			name: String::from("fat_defender"),
+			base_hp: 120,
 			species_id: SpeciesId(1),
 			attack: 80,
 			defense: 80,
