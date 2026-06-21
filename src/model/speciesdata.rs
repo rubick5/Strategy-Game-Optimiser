@@ -1,6 +1,6 @@
 pub struct SpeciesId(pub u32);
 
-pub struct Pokemon {
+pub struct SpeciesData {
 	pub name: String,
 	pub species_id: SpeciesId,
 	pub attack: u8,
