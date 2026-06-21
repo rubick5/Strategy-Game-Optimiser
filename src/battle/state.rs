@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use crate::model::pokemon::SpeciesId;
 
+pub type PositionId = u32;
+
 pub struct BattleState {
-	pub team1: Vec<PokemonState>,
-	pub team2: Vec<PokemonState>,
+	pub mons: HashMap<PositionId, PokemonState>,
 }
 
 pub struct PokemonState {
