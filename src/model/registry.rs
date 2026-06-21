@@ -5,10 +5,18 @@ use crate::model::pmove::MoveId;
 
 pub struct Registry {
 	pub pokemon: Vec<SpeciesData>,
-	pub moves: Vec<PMove>,
+	moves: Vec<PMove>,
 }
 
 impl Registry {
+	pub fn get_move(self: &Self, move_id: MoveId) -> &PMove {
+		self.moves.get(move_id.0 as usize).unwrap()
+	}
+
+	pub fn get_pokemon(self: &Self, species_id: SpeciesId) -> &SpeciesData {
+		self.pokemon.get(species_id.0 as usize).unwrap()
+	}
+	
 	pub fn load() -> Self {
 		let frail_attacker = SpeciesData {
 			name: String::from("frail_attacker"),

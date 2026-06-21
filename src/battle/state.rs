@@ -10,8 +10,12 @@ pub struct BattleState {
 
 pub struct PokemonState {
 	pub species_id: SpeciesId,
-
+	pub stat_changes: StatStages,
+	pub current_hp: u32,
 }
 
-pub struct StatChanges {
+pub struct StatStages {
+	pub attack: i8,
+	pub defense: i8,
+	pub speed: i8,
 }
