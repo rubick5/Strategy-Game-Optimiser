@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::pokemon::SpeciesId;
+use crate::model::speciesdata::SpeciesId;
 
 pub type PositionId = u32;
 
