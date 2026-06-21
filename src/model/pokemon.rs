@@ -1,4 +1,4 @@
-pub type SpeciesId = u32;
+pub struct SpeciesId(pub u32);
 
 pub struct Pokemon {
 	pub name: String,
