@@ -1,11 +1,14 @@
 use crate::battle::state::BattleState;
 use crate::battle::command::Command;
+use crate::battle::event::Event;
 
 pub fn step(battle_state: BattleState, commands: Vec<Command>) -> BattleState {
-	for command in commands {
-		match command {
-			Command::MoveAction(move_action) => todo!(),
-			Command::Switch => todo!()
+	let mut events: Vec<Event> = commands.into_iter().map(|x| Event::CommandEvent(x)).collect();
+	for event in events {
+		match event {
+			Event::CommandEvent(command) => {
+			},
+			Event::DealDamage { amount, target} => todo!()
 		}
 	}
 
