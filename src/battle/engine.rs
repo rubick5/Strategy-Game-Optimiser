@@ -29,7 +29,10 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 				let defense = target_state.get_stat(Stat::Defense, &registry);
 				let pure_damage = amount / defense;
 				println!("Dealing {} damage to {} hp", pure_damage, target_state.current_hp);
-				target_state.current_hp -= pure_damage;
+				target_state.current_hp = target_state.current_hp.saturating_sub(pure_damage);
+				if target_state.current_hp == 0 {
+					println!("TODO: FLAG ANY DEATH");
+				}
 
 			}
 		}
