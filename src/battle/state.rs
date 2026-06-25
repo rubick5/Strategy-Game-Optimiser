@@ -3,9 +3,16 @@ use std::collections::HashMap;
 use crate::model::speciesdata::SpeciesId;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
+use std::fmt::Display;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct PositionId(pub u32);
+
+impl Display for PositionId {
+		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+			self.0.fmt(f)
+		}
+}
 
 #[derive(Debug)]
 pub struct BattleState {

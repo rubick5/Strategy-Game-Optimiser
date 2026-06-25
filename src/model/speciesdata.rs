@@ -3,6 +3,7 @@
 #[derive(Debug)]
 pub struct SpeciesId(pub u32);
 
+#[derive(Clone)]
 pub struct SpeciesData {
 	pub name: String,
 	pub species_id: SpeciesId,
