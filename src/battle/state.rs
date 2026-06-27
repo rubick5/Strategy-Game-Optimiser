@@ -27,7 +27,25 @@ pub struct BattleState {
 
 impl BattleState {
 	pub fn outcome(&self) -> Option<Outcome> {
-		None
+		let mut side1_alive = false;
+		let mut side0_alive = false;
+
+		for (pos, mon) in self.mons.iter() {
+			if mon.current_hp > 0 {
+				if pos.0 % 2 == 0 {
+					side0_alive = true;
+				} else {
+					side1_alive = true;
+				}
+			}
+		}
+		match (side0_alive, side1_alive) {
+			(true, true) => None,
+			(true, false) => Some(Outcome::Side0Wins),
+			(false, true) => Some(Outcome::Side1Wins),
+			(false, false) => Some(Outcome::Draw)
+
+		}
 	}
 }
 
