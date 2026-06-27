@@ -1,13 +1,13 @@
 use crate::battle::state::PositionId;
 use crate::model::pmove::MoveId;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
 	MoveAction(MoveCommand),
 	Switch(PositionId),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MoveCommand {
 	pub move_id: MoveId,
 	pub user: PositionId,
