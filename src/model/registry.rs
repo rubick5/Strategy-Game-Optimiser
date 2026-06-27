@@ -1,21 +1,19 @@
-use crate::battle::state::BattleState;
 use crate::model::speciesdata::SpeciesData;
 use crate::model::speciesdata::SpeciesId;
 use crate::model::pmove::PMove;
 use crate::model::pmove::MoveId;
-use crate::battle::state::PositionId;
 
 pub struct Registry {
 	pub pokemon: Vec<SpeciesData>,
-	moves: Vec<PMove>,
+	pub moves: Vec<PMove>,
 }
 
 impl Registry {
-	pub fn get_move(self: &Self, move_id: MoveId) -> &PMove {
+	pub fn get_move(&self, move_id: MoveId) -> &PMove {
 		self.moves.get(move_id.0 as usize).unwrap()
 	}
 
-	pub fn get_pokemon(self: &Self, species_id: SpeciesId) -> &SpeciesData {
+	pub fn get_pokemon(&self, species_id: SpeciesId) -> &SpeciesData {
 		self.pokemon.get(species_id.0 as usize).unwrap()
 	}
 
@@ -43,7 +41,7 @@ impl Registry {
 			move_id: MoveId(0),
 			base_power: 40,
 			effects: vec![],
-			calc_prio: normal_priority,
+			base_prio: 0,
 		};
 
 		let quick_attack = PMove {
@@ -51,19 +49,11 @@ impl Registry {
 			move_id: MoveId(1),
 			base_power: 40,
 			effects: vec![],
-			calc_prio: plus_one_prio,
+			base_prio: 1,
 		};
 		Registry {
 			pokemon: vec![frail_attacker, fat_defender],
 			moves: vec![tackle, quick_attack],
 		}
 	}
-}
-
-fn normal_priority(_: &BattleState, _: PositionId) -> i8 {
-	0
-}
-
-fn plus_one_prio(_: &BattleState, _: PositionId) -> i8 {
-	1
 }

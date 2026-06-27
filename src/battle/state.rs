@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::speciesdata::SpeciesId;
+use crate::model::speciesdata::{SpeciesData, SpeciesId};
 use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
 use std::fmt::Display;
@@ -14,9 +14,21 @@ impl Display for PositionId {
 		}
 }
 
+pub enum Outcome {
+	Side0Wins,
+	Side1Wins,
+	Draw,
+}
+
 #[derive(Debug)]
 pub struct BattleState {
 	pub mons: HashMap<PositionId, PokemonState>,
+}
+
+impl BattleState {
+	pub fn outcome(&self) -> Option<Outcome> {
+		None
+	}
 }
 
 #[derive(Debug)]
@@ -27,15 +39,22 @@ pub struct PokemonState {
 }
 
 impl PokemonState {
+	pub fn from_species_data(species_data: SpeciesData) -> Self {
+		PokemonState {
+			species_id: species_data.species_id,
+			stat_changes: StatStages::new(),
+			current_hp: species_data.base_hp as u32,
+		}
+	}
 	pub fn from_species(registry: &Registry, species_id: SpeciesId) -> Self {
 		let pokemon = registry.get_pokemon(species_id);
 		PokemonState {
-    species_id,
-    stat_changes: StatStages::new(),
-    current_hp: pokemon.base_hp as u32,
-}
+			species_id,
+			stat_changes: StatStages::new(),
+			current_hp: pokemon.base_hp as u32,
+		}
 	}
-	pub fn get_stat(self: &Self, stat: Stat, registry: &Registry) -> u32 {
+	pub fn get_stat(&self, stat: Stat, registry: &Registry) -> u32 {
 		let species_data = registry.get_pokemon(self.species_id);
 		match stat {
 			Stat::Attack => {
