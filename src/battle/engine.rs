@@ -184,7 +184,7 @@ mod tests {
 		]);
 		BattleState {
 			mons: mons,
-		}		
+		}
 	}
 
 	fn frail_uses_tackle() -> Command {
