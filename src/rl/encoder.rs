@@ -18,7 +18,7 @@ fn encode_mon(mon: PokemonState, registry: &Registry) -> Vec<f32> {
 	let defense_stage = mon.stat_changes.defense as f32;
 	let speed_stage = mon.stat_changes.speed as f32;
 	
-	vec![ 
+	vec![
 		attack / ATTACK_SCALAR,
 		defense / DEFENSE_SCALAR,
 		speed / SPEED_SCALAR,
