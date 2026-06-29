@@ -1,17 +1,10 @@
 use crate::{battle::{command::{Command::{self, MoveAction}, MoveCommand}, state::{BattleState, Outcome, PositionId}}, model::{pmove::MoveId, registry::Registry}};
 use crate::battle::engine;
 
-fn step_against_random(battle_state: BattleState, action: Command, registry: &Registry) -> (BattleState, f32, bool) {
-	let random_command = MoveAction(
-		MoveCommand {
-			move_id: MoveId(0),
-			user: PositionId(1),
-			targets: vec![PositionId(0)],
-		}
-	);
+pub fn step(battle_state: BattleState, actions: Vec<Command>, registry: &Registry) -> (BattleState, f32, bool) {
 
+	let next_state = engine::step(battle_state, actions, registry);
 
-	let next_state = engine::step(battle_state, vec![action, random_command] ,registry);
 	let finished: bool;
 	let reward = match next_state.outcome() {
 		Some(Outcome::Side0Wins) => {

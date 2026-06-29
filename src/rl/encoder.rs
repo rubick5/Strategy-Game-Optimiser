@@ -5,7 +5,7 @@ const SPEED_SCALAR: f32 = 1000.0;
 const DEFENSE_SCALAR: f32 = 1000.0;
 const HP_SCALAR: f32 = 1000.0;
 
-fn encode(battle_state: BattleState, registry: &Registry) -> Vec<f32> {
+pub fn encode(battle_state: BattleState, registry: &Registry) -> Vec<f32> {
 	battle_state.mons.into_iter().flat_map(|(_, mon)| encode_mon(mon, registry)).collect()
 }
 
