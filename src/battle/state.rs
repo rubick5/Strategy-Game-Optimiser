@@ -5,13 +5,35 @@ use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
 use std::fmt::Display;
 
+#[derive(PartialEq)]
+pub enum Team {
+	Zero,
+	One
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct PositionId(pub u32);
 
-impl Display for PositionId {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			self.0.fmt(f)
+impl PositionId {
+	pub fn team(&self) -> Team {
+		if self.0 % 2 == 0 {
+			Team::Zero
+		} else {
+			Team::One
 		}
+	}
+	pub fn is_ally(&self, other: Self) -> bool {
+		self.team() == other.team()
+	}
+	pub fn is_opponent(&self, other: Self) -> bool {
+		!self.is_ally(other)
+	}
+}
+
+impl Display for PositionId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
+	}
 }
 
 pub enum Outcome {

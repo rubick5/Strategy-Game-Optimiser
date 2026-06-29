@@ -1,3 +1,4 @@
 pub mod encoder;
-pub mod reward;
+pub mod train;
 pub mod env;
+pub mod agent;
