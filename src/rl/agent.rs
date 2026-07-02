@@ -83,4 +83,8 @@ impl Neuron {
 		}
 	}
 
+	pub fn backprop(&mut self, gt: f32, ) {
+		// we need to backprop on each weight in the neuron
+	}
+
 }
