@@ -1,9 +1,13 @@
+use std::clone;
 use std::collections::HashMap;
 
+use crate::model::pmove::MoveId;
 use crate::model::speciesdata::{SpeciesData, SpeciesId};
 use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
 use std::fmt::Display;
+
+pub const TEAM_SIZE: usize = 6;
 
 #[derive(PartialEq)]
 pub enum Team {
@@ -43,22 +47,87 @@ pub enum Outcome {
 }
 
 #[derive(Debug)]
+pub struct Field {
+	mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
+}
+
+impl Field {
+
+	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>) -> Self {
+		let mut mons: Vec<Option<PokemonState>> = vec![None; 2 * TEAM_SIZE];
+		for i in 0..team0.len() {
+			let monstate = match team0.get(i) {
+				Some(mon) => Some(mon.clone()),
+				None => None
+			};
+			mons[i*2] = monstate;
+		}
+		for i in 0..team1.len() {
+			let monstate = match team1.get(i) {
+				Some(mon) => Some(mon.clone()),
+				None => None
+			};
+			mons[i*2 + 1] = monstate;
+		}
+		Field {
+			mons
+		}
+	}
+	pub fn team0(&self) -> impl Iterator<Item = &Option<PokemonState>> + '_ {
+		self.mons.iter().step_by(2)
+	}
+
+	pub fn team1(&self) -> impl Iterator<Item = &Option<PokemonState>> + '_ {
+		self.mons.iter().skip(1).step_by(2)
+	}
+
+	pub fn get(&self, pos: PositionId) -> Option<&PokemonState> {
+		self.mons[pos.0 as usize].as_ref()
+	}
+
+	pub fn get_mut(&mut self, pos: PositionId) -> Option<&mut PokemonState> {
+		self.mons.get_mut(pos.0 as usize)?.as_mut()
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = (PositionId, &PokemonState)> + '_ {
+		self.mons.iter().enumerate().filter_map(|(i, slot)| {
+			slot.as_ref().map(|mon| (PositionId(i as u32), mon))
+		})
+	}
+	pub fn all_mons(&self) -> impl Iterator<Item = Option<&PokemonState>> + '_ {
+		self.mons.iter().map(|slot| slot.as_ref())
+	}
+}
+
+impl std::ops::Index<PositionId> for Field {
+	type Output = Option<PokemonState>;
+	fn index(&self, pos: PositionId) -> &Self::Output {
+		&self.mons[pos.0 as usize]
+	}
+}
+impl std::ops::IndexMut<PositionId> for Field {
+	fn index_mut(&mut self, pos: PositionId) -> &mut Self::Output {
+		&mut self.mons[pos.0 as usize]
+	}
+}
+
+#[derive(Debug)]
 pub struct BattleState {
-	pub mons: HashMap<PositionId, PokemonState>,
+	pub mons: Field,
 }
 
 impl BattleState {
 	pub fn outcome(&self) -> Option<Outcome> {
 		let mut side1_alive = false;
 		let mut side0_alive = false;
-
-		for (pos, mon) in self.mons.iter() {
+		for mon in self.mons.team0().flatten() {
 			if mon.current_hp > 0 {
-				if pos.0 % 2 == 0 {
-					side0_alive = true;
-				} else {
-					side1_alive = true;
-				}
+				side0_alive = true;
+			}
+		}
+		for mon in self.mons.team1().flatten() {
+			if mon.current_hp > 0 {
+				side1_alive = true;
 			}
 		}
 		match (side0_alive, side1_alive) {
@@ -71,27 +140,30 @@ impl BattleState {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PokemonState {
 	pub species_id: SpeciesId,
 	pub stat_changes: StatStages,
 	pub current_hp: u32,
+	pub moves: Vec<MoveId>,
 }
 
 impl PokemonState {
-	pub fn from_species_data(species_data: SpeciesData) -> Self {
+	pub fn from_species_data(species_data: SpeciesData, moves: Vec<MoveId>) -> Self {
 		PokemonState {
 			species_id: species_data.species_id,
 			stat_changes: StatStages::new(),
 			current_hp: species_data.base_hp as u32,
+			moves,
 		}
 	}
-	pub fn from_species(registry: &Registry, species_id: SpeciesId) -> Self {
+	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {
 		let pokemon = registry.get_pokemon(species_id);
 		PokemonState {
 			species_id,
 			stat_changes: StatStages::new(),
 			current_hp: pokemon.base_hp as u32,
+			moves,
 		}
 	}
 	pub fn get_stat(&self, stat: Stat, registry: &Registry) -> u32 {
@@ -114,7 +186,7 @@ impl PokemonState {
 	}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct StatStages {
 	pub attack: i8,
 	pub defense: i8,
