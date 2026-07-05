@@ -1,5 +1,5 @@
 use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, Team}}, model::registry::Registry, rl::encoder};
-use rand::{Rng, distr::{self, Uniform}};
+use rand::{Rng, distr::{self, Uniform}, random};
 
 use std::f32::consts::E;
 
@@ -37,11 +37,8 @@ impl Agent {
 	pub fn choose_move(&self, representation: &[f32], registry: &Registry) -> Moveslot {
 		let move1choice = self.neuron1.forward(&representation);
 		let move2choice = self.neuron2.forward(&representation);
-		if move1choice > move2choice {
-			return Moveslot::Slot(0);
-		} else {
-			return Moveslot::Slot(1);
-		}
+
+		return Moveslot::Slot(softmax_then_select(vec![move1choice, move2choice]));
 	}
 
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
@@ -98,4 +95,17 @@ impl Neuron {
 fn softmax(logits: Vec<f32>) -> Vec<f32> {
 	let divisor: f32 = logits.iter().map(|x| E.powf(*x)).sum();
 	logits.iter().map(|x| E.powf(*x) / divisor).collect()
+}
+
+fn softmax_then_select(logits: Vec<f32>) -> usize {
+	let probabilities = softmax(logits);
+	let random_selection = random();
+	let mut counter = 0.0;
+	for (index, prob) in probabilities.into_iter().enumerate() {
+		counter += prob;
+		if counter >= random_selection {
+			return index;
+		}
+	}
+	0
 }
