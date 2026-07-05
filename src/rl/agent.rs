@@ -1,5 +1,8 @@
 use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, Team}}, model::registry::Registry, rl::encoder};
 use rand::{Rng, distr::{self, Uniform}};
+
+use std::f32::consts::E;
+
 pub enum Moveslot {
 	Slot(usize),
 	Switch,
@@ -85,6 +88,14 @@ impl Neuron {
 
 	pub fn backprop(&mut self, gt: f32, ) {
 		// we need to backprop on each weight in the neuron
+		for weight in self.weights.iter() {
+
+		}
 	}
 
+}
+
+fn softmax(logits: Vec<f32>) -> Vec<f32> {
+	let divisor: f32 = logits.iter().map(|x| E.powf(*x)).sum();
+	logits.iter().map(|x| E.powf(*x) / divisor).collect()
 }
