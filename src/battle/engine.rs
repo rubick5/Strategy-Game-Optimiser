@@ -21,6 +21,9 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 			Command::MoveAction(move_command) => {
 				let mv = registry.get_move(move_command.move_id);
 				let mon = battle_state.mons.get(move_command.user).unwrap();
+				if mon.current_hp <= 0 {
+					continue;
+				}
 				let prio = mv.base_prio;
 				let speed = mon.get_stat(Stat::Speed, &registry);
 				(prio, speed)
@@ -37,6 +40,9 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 		} else if prio == highest_prio && speed > highest_speed {
 			highest_prio = prio;
 			highest_speed = speed;
+			highest_command_index = Some(index);
+		} else if prio == highest_prio && speed == highest_speed && rand::random::<bool>() {
+			// exact speed tie -> break it with a coin flip (favours neither side)
 			highest_command_index = Some(index);
 		}
 	}
@@ -56,14 +62,14 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
 				let target_state: &mut PokemonState = battle_state.mons.get_mut(target).unwrap();
-				println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
+				//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
 				target_state.current_hp = target_state.current_hp.saturating_sub(amount);
 				if target_state.current_hp == 0 {
-					println!("TODO: FLAG ANY DEATH");
+					//println!("TODO: FLAG ANY DEATH");
 				}
 			}
 
-			Some(Event::Switch { pos }) => println!("switch, position {}", pos),
+			Some(Event::Switch { pos }) => {},//println!("switch, position {}", pos),
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
@@ -78,7 +84,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 							let target: &PokemonState = battle_state.mons.get(target_pos).unwrap();
 							let target_defense =  target.get_stat(Stat::Defense, registry);
 
-							log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
+							//log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
 
 							events.push(Event::DealDamage {
 								amount: calculate_damage(user_attack, target_defense, mv.base_power),

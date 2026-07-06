@@ -47,7 +47,7 @@ impl Registry {
 		let quick_attack = PMove {
 			name: String::from("quick-attack"),
 			move_id: MoveId(1),
-			base_power: 40,
+			base_power: 25,
 			effects: vec![],
 			base_prio: 1,
 		};

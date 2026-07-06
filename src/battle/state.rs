@@ -46,7 +46,7 @@ pub enum Outcome {
 	Draw,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
 	mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
 }
@@ -111,7 +111,7 @@ impl std::ops::IndexMut<PositionId> for Field {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BattleState {
 	pub mons: Field,
 }
