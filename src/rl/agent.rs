@@ -5,6 +5,7 @@ use std::f32::consts::E;
 
 const LEARNING_RATE: f32 = 0.01;
 
+#[derive(Debug)]
 pub enum Moveslot {
 	Slot(usize),
 	Switch,
@@ -29,6 +30,7 @@ impl Moveslot {
 	}
 }
 
+#[derive(Debug, Clone)]
 pub struct Agent {
 	// a bunch of weights telling us what to do
 	pub neuron1: Neuron,
@@ -50,9 +52,9 @@ impl Agent {
 		}
 	}
 
-	pub fn backprop(&mut self, move_slot: Moveslot, state: BattleState, battle_reward: f32, registry: &Registry, gt: f32) {
-		let encoding = encoder::encode(&state, registry);
+	pub fn backprop(&mut self, move_slot: Moveslot, encoding: Vec<f32>, battle_reward: f32, gt: f32) {
 		let v = self.forward(&encoding);
+		let gt = gt * battle_reward;
 		match move_slot {
 			Moveslot::Slot(0) => {
 				self.neuron1.backprop(gt, &encoding, true, v[0]);
@@ -75,9 +77,10 @@ impl Agent {
 }
 
 
-struct Neuron {
-	weights: Vec<f32>,
-	bias: f32,
+#[derive(Debug, Clone)]
+pub struct Neuron {
+	pub weights: Vec<f32>,
+	pub bias: f32,
 }
 
 impl Neuron {
@@ -106,15 +109,14 @@ impl Neuron {
 
 	pub fn backprop(&mut self, gt: f32, inputs: &[f32], our_action_taken: bool, p_ours: f32) {
 		assert!(inputs.len() == self.weights.len());
-		// we need to backprop on each weight in the neuron
-		for index in 0..self.weights.len() {
-			if our_action_taken {
-				self.weights[index] += LEARNING_RATE * gt * inputs[index] * (1.0 - p_ours);
-			} else {
-				self.weights[index] += LEARNING_RATE * gt * inputs[index] * (-p_ours);
 
-			}
+		// we need to backprop on each weight in the neuron
+		let indicator = if our_action_taken { 1.0 } else { 0.0 };
+
+		for index in 0..self.weights.len() {
+			self.weights[index] += LEARNING_RATE * gt * inputs[index] * (indicator - p_ours);
 		}
+		self.bias += LEARNING_RATE * gt * (indicator - p_ours);
 	}
 
 }
