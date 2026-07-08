@@ -57,6 +57,9 @@ impl Field {
 			mons: mons.iter().map(|x| RosterId(*x)).collect()
 		}
 	}
+	pub fn all_field_mons(&self) -> &Vec<RosterId> {
+		&self.mons
+	}
 }
 
 impl std::ops::Index<PositionId> for Field {
@@ -72,7 +75,7 @@ impl std::ops::IndexMut<PositionId> for Field {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RosterId(usize);
+pub struct RosterId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct Roster {
