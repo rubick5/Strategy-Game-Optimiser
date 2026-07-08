@@ -48,10 +48,37 @@ pub enum Outcome {
 
 #[derive(Debug, Clone)]
 pub struct Field {
-	mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
+	mons: Vec<usize>,
 }
 
 impl Field {
+	pub fn from(mons: Vec<usize>) -> Self {
+		Field{
+			mons
+		}
+	}
+}
+
+impl std::ops::Index<PositionId> for Field {
+	type Output = usize;
+	fn index(&self, pos: PositionId) -> &Self::Output {
+		&self.mons[pos.0 as usize]
+	}
+}
+impl std::ops::IndexMut<PositionId> for Field {
+	fn index_mut(&mut self, pos: PositionId) -> &mut Self::Output {
+		&mut self.mons[pos.0 as usize]
+	}
+}
+
+
+
+#[derive(Debug, Clone)]
+pub struct Roster {
+	pub mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
+}
+
+impl Roster {
 
 	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>) -> Self {
 		let mut mons: Vec<Option<PokemonState>> = vec![None; 2 * TEAM_SIZE];
@@ -69,7 +96,7 @@ impl Field {
 			};
 			mons[i*2 + 1] = monstate;
 		}
-		Field {
+		Roster {
 			mons
 		}
 	}
@@ -80,7 +107,7 @@ impl Field {
 	pub fn team1(&self) -> impl Iterator<Item = &Option<PokemonState>> + '_ {
 		self.mons.iter().skip(1).step_by(2)
 	}
-
+	/*
 	pub fn get(&self, pos: PositionId) -> Option<&PokemonState> {
 		self.mons[pos.0 as usize].as_ref()
 	}
@@ -93,39 +120,35 @@ impl Field {
 		self.mons.iter().enumerate().filter_map(|(i, slot)| {
 			slot.as_ref().map(|mon| (PositionId(i as u32), mon))
 		})
-	}
+	} */
 	pub fn all_mons(&self) -> impl Iterator<Item = Option<&PokemonState>> + '_ {
 		self.mons.iter().map(|slot| slot.as_ref())
 	}
 }
 
-impl std::ops::Index<PositionId> for Field {
-	type Output = Option<PokemonState>;
-	fn index(&self, pos: PositionId) -> &Self::Output {
-		&self.mons[pos.0 as usize]
-	}
-}
-impl std::ops::IndexMut<PositionId> for Field {
-	fn index_mut(&mut self, pos: PositionId) -> &mut Self::Output {
-		&mut self.mons[pos.0 as usize]
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct BattleState {
-	pub mons: Field,
+	pub roster: Roster,
+	pub field: Field,
 }
 
 impl BattleState {
+	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>, field: Vec<usize>) -> Self {
+		BattleState {
+			field: Field::from(field),
+			roster: Roster::from(team0, team1),
+		}
+	}
+
 	pub fn outcome(&self) -> Option<Outcome> {
 		let mut side1_alive = false;
 		let mut side0_alive = false;
-		for mon in self.mons.team0().flatten() {
+		for mon in self.roster.team0().flatten() {
 			if mon.current_hp > 0 {
 				side0_alive = true;
 			}
 		}
-		for mon in self.mons.team1().flatten() {
+		for mon in self.roster.team1().flatten() {
 			if mon.current_hp > 0 {
 				side1_alive = true;
 			}
@@ -137,6 +160,16 @@ impl BattleState {
 			(false, false) => Some(Outcome::Draw)
 
 		}
+	}
+
+	pub fn get_mon(&self, pos: PositionId) -> Option<&PokemonState> {
+		let index = self.field[pos];
+		self.roster.mons[index].as_ref()
+	}
+
+	pub fn get_mut_mon(&mut self, pos: PositionId) -> Option<&mut PokemonState> {
+		let index = self.field[pos];
+		self.roster.mons.get_mut(index).and_then(|x| x.as_mut())
 	}
 }
 

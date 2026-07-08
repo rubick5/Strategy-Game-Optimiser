@@ -13,7 +13,7 @@ pub const TOTAL_ENCODING_LEN: usize = MON_COUNT * MON_ENCODING_LEN;
 
 pub fn encode(battle_state: &BattleState, registry: &Registry) -> Vec<f32> {
 	let v: Vec<f32> = vec![];
-	let y: Vec<f32> = battle_state.mons.all_mons().flat_map(|mon| encode_mon(mon, registry)).collect();
+	let y: Vec<f32> = battle_state.roster.all_mons().flat_map(|mon| encode_mon(mon, registry)).collect();
 	assert!(y.len() == TOTAL_ENCODING_LEN);
 	return y;
 }
