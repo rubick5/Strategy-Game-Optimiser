@@ -25,18 +25,8 @@ pub fn main_loop() {
 	let ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
-	let battle_state_normal = BattleState {
-		mons: Field::from(
-			vec![ps0],
-			vec![ps1]
-		)
-	};
-	let battle_state_1hp = BattleState {
-		mons: Field::from(
-			vec![ps00],
-			vec![ps1_1hp]
-		)
-	};
+	let battle_state_normal = BattleState::from(vec![ps0], vec![ps1], vec![0, 1]);
+	let battle_state_1hp = BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1]);
 
 
 	let mut opponent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);

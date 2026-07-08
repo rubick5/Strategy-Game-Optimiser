@@ -20,7 +20,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 		let (prio, speed) = match command {
 			Command::MoveAction(move_command) => {
 				let mv = registry.get_move(move_command.move_id);
-				let mon = battle_state.mons.get(move_command.user).unwrap();
+				let mon = battle_state.get_mon(move_command.user).unwrap();
 				if mon.current_hp <= 0 {
 					continue;
 				}
@@ -29,7 +29,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 				(prio, speed)
 			}
 			Command::Switch(pos) => {
-				let speed = battle_state.mons.get(*pos).unwrap().get_stat(Stat::Speed, &registry);
+				let speed = battle_state.get_mon(*pos).unwrap().get_stat(Stat::Speed, &registry);
 				(SWITCHING_PRIO, speed)
 			}
 		};
@@ -52,7 +52,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	} else {
 		return None;
 	}
-	
+
 }
 
 pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry) -> BattleState {
@@ -61,7 +61,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 	loop {
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
-				let target_state: &mut PokemonState = battle_state.mons.get_mut(target).unwrap();
+				let target_state: &mut PokemonState = battle_state.get_mut_mon(target).unwrap();
 				//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
 				target_state.current_hp = target_state.current_hp.saturating_sub(amount);
 				if target_state.current_hp == 0 {
@@ -69,19 +69,21 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 				}
 			}
 
-			Some(Event::Switch { pos }) => {},//println!("switch, position {}", pos),
+			Some(Event::Switch { pos }) => {
+
+			},//println!("switch, position {}", pos),
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
 				match get_next_command(&mut commands, registry, &battle_state) {
 					Some(Command::MoveAction(move_command)) => {
 						let mv = registry.get_move(move_command.move_id);
-						let user: &PokemonState = battle_state.mons.get(move_command.user).unwrap();
+						let user: &PokemonState = battle_state.get_mon(move_command.user).unwrap();
 
 						let user_attack = user.get_stat(Stat::Attack, registry);
 
 						for target_pos in move_command.targets {
-							let target: &PokemonState = battle_state.mons.get(target_pos).unwrap();
+							let target: &PokemonState = battle_state.get_mon(target_pos).unwrap();
 							let target_defense =  target.get_stat(Stat::Defense, registry);
 
 							//log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
@@ -116,7 +118,7 @@ fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: Positio
 }
 
 fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
-	registry.get_pokemon(battle_state.mons.get(pos).unwrap().species_id).clone()
+	registry.get_pokemon(battle_state.get_mon(pos).unwrap().species_id).clone()
 }
 
 /********************************
@@ -129,7 +131,7 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 mod tests {
 	use std::collections::HashMap;
 
-	use crate::{battle::{command::MoveCommand, state::{Field, PositionId}}, model::{pmove::{MoveId, PMove}, speciesdata::SpeciesId}};
+	use crate::{battle::{command::MoveCommand, state::{Field, PositionId, Roster}}, model::{pmove::{MoveId, PMove}, speciesdata::SpeciesId}};
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
 	use super::*;
@@ -195,7 +197,8 @@ mod tests {
 			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		BattleState {
-			mons: Field::from(team0, team1)
+			roster: Roster::from(team0, team1),
+			field: Field::from(vec![0, 1])
 		}
 	}
 
@@ -228,10 +231,10 @@ mod tests {
 		let registry = test_registry();
 
 		let battle_state = test_battle_state();
-		let fat_hp = battle_state.mons.get(PositionId(1)).unwrap().current_hp;
+		let fat_hp = battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
 		let next_battle_state = step(battle_state, vec![frail_uses_tackle()], &registry);
-		let fat_hp_after = next_battle_state.mons.get(PositionId(1)).unwrap().current_hp;
+		let fat_hp_after = next_battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
 		let tackle_power = tackle().base_power;
 		let frail_attack = frail_attacker().attack;

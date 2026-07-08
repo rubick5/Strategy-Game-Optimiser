@@ -8,7 +8,7 @@ const LEARNING_RATE: f32 = 0.01;
 #[derive(Debug)]
 pub enum Moveslot {
 	Slot(usize),
-	Switch,
+	Switch(usize),
 }
 
 impl Moveslot {
@@ -22,10 +22,10 @@ impl Moveslot {
 				Command::MoveAction(MoveCommand {
 					user,
 					targets: vec![PositionId(target)],
-					move_id: battle_state.mons.get(user).unwrap().moves[*index]
+					move_id: battle_state.get_mon(user).unwrap().moves[*index]
 				})
 			},
-			Moveslot::Switch => todo!()
+			Moveslot::Switch(n) => todo!()
 		}
 	}
 }
@@ -64,7 +64,7 @@ impl Agent {
 				self.neuron2.backprop(gt, &encoding, true, v[1]);
 				self.neuron1.backprop(gt, &encoding, false, v[0]);
 			}
-			Moveslot::Switch => todo!(),
+			Moveslot::Switch(n) => todo!(),
 			Moveslot::Slot(_) => assert!(0 == 1),
 		}
 	}
