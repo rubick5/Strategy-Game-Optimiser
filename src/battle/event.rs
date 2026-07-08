@@ -1,4 +1,4 @@
-use crate::battle::state::PositionId;
+use crate::battle::state::{PositionId, RosterId};
 
 pub enum Event {
 	DealDamage {
@@ -6,6 +6,7 @@ pub enum Event {
 		target: PositionId,
 	},
 	Switch {
-		pos: PositionId,
+		current: PositionId,
+		new: RosterId,
 	}
 }

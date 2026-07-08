@@ -1,10 +1,13 @@
-use crate::battle::state::PositionId;
+use crate::battle::state::{PositionId, RosterId};
 use crate::model::pmove::MoveId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
 	MoveAction(MoveCommand),
-	Switch(PositionId),
+	Switch {
+		current: PositionId,
+		new: RosterId,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -28,8 +28,8 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 				let speed = mon.get_stat(Stat::Speed, &registry);
 				(prio, speed)
 			}
-			Command::Switch(pos) => {
-				let speed = battle_state.get_mon(*pos).unwrap().get_stat(Stat::Speed, &registry);
+			Command::Switch {current, new: _} => {
+				let speed = battle_state.get_mon(*current).unwrap().get_stat(Stat::Speed, &registry);
 				(SWITCHING_PRIO, speed)
 			}
 		};
@@ -69,9 +69,9 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 				}
 			}
 
-			Some(Event::Switch { pos }) => {
-
-			},//println!("switch, position {}", pos),
+			Some(Event::Switch { current, new }) => {
+				battle_state.field[current] = new; // wow that was easy lol
+			},
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
@@ -94,14 +94,13 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 							});
 						}
 					},
-					Some(Command::Switch(pos)) => 
-						events.push(Event::Switch { pos }),
+					Some(Command::Switch {current, new}) => 
+						events.push(Event::Switch { current, new }),
 					None => break
 				}
 			}
 		}
 	}
-
 	battle_state
 }
 

@@ -16,7 +16,7 @@ pub enum Team {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct PositionId(pub u32);
+pub struct PositionId(pub usize);
 
 impl PositionId {
 	pub fn team(&self) -> Team {
@@ -48,19 +48,19 @@ pub enum Outcome {
 
 #[derive(Debug, Clone)]
 pub struct Field {
-	mons: Vec<usize>,
+	mons: Vec<RosterId>,
 }
 
 impl Field {
 	pub fn from(mons: Vec<usize>) -> Self {
 		Field{
-			mons
+			mons: mons.iter().map(|x| RosterId(*x)).collect()
 		}
 	}
 }
 
 impl std::ops::Index<PositionId> for Field {
-	type Output = usize;
+	type Output = RosterId;
 	fn index(&self, pos: PositionId) -> &Self::Output {
 		&self.mons[pos.0 as usize]
 	}
@@ -71,14 +71,22 @@ impl std::ops::IndexMut<PositionId> for Field {
 	}
 }
 
-
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RosterId(usize);
 
 #[derive(Debug, Clone)]
 pub struct Roster {
-	pub mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
+	mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
 }
 
 impl Roster {
+
+	pub fn get_mon(&self, rid: RosterId) -> &Option<PokemonState> {
+		&self.mons[rid.0]
+	}
+	pub fn get_mut_mon(&mut self, rid: RosterId) -> Option<&mut PokemonState> {
+		self.mons[rid.0].as_mut()
+	}
 
 	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>) -> Self {
 		let mut mons: Vec<Option<PokemonState>> = vec![None; 2 * TEAM_SIZE];
@@ -164,12 +172,12 @@ impl BattleState {
 
 	pub fn get_mon(&self, pos: PositionId) -> Option<&PokemonState> {
 		let index = self.field[pos];
-		self.roster.mons[index].as_ref()
+		self.roster.get_mon(index).as_ref()
 	}
 
 	pub fn get_mut_mon(&mut self, pos: PositionId) -> Option<&mut PokemonState> {
 		let index = self.field[pos];
-		self.roster.mons.get_mut(index).and_then(|x| x.as_mut())
+		self.roster.get_mut_mon(index)
 	}
 }
 
