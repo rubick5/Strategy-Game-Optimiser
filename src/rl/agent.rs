@@ -86,6 +86,9 @@ impl NeuronLayer {
 	}
 
 	fn backward(&mut self, incoming_error: &[f32], layer_input: &[f32]) -> Vec<f32> {
+		// we need to take into account the error created by our neuron in all the incoming errors
+		// then move it in the combined direction
+		// then we need to return a vector of all the 
 		vec![0.0]
 	}
 
