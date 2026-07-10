@@ -76,6 +76,20 @@ impl Agent {
 	}
 }
 
+pub struct NeuronLayer {
+	pub neurons: Vec<Neuron>
+}
+
+impl NeuronLayer {
+	pub fn forward(&self, input: Vec<f32>) -> Vec<f32> {
+		self.neurons.iter().map(|neuron| neuron.forward(&input)).collect()
+	}
+
+	fn backward(&mut self, incoming_error: &[f32], layer_input: &[f32]) -> Vec<f32> {
+		vec![0.0]
+	}
+
+}
 
 #[derive(Debug, Clone)]
 pub struct Neuron {
@@ -87,7 +101,6 @@ impl Neuron {
 	pub fn forward(&self, inputs: &[f32]) -> f32 {
 		if inputs.len() != self.weights.len() {
 			panic!("bad neural net setup: inputs; {} weights: {}", inputs.len(), self.weights.len());
-			
 		}
 		let mut result = self.bias;
 		for i in 0..inputs.len() {
