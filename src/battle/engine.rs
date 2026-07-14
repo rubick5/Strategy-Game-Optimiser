@@ -289,4 +289,39 @@ mod tests {
 
 		println!("{:?}", new_state);
 	}
+
+	#[test]
+	fn switching_changes_the_active_mon() {
+		use crate::battle::state::RosterId;
+
+		let registry = test_registry();
+
+		// team0 has TWO mons: frail_attacker (roster 0) and fat_defender (roster 2).
+		// team1 has one mon (roster 1). field starts pointing position 0 -> roster 0.
+		let team0 = vec![
+			PokemonState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
+			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+		];
+		let team1 = vec![
+			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+		];
+		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
+
+		// before switching, position 0's active mon is the frail_attacker (species 0)
+		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().species_id.0, 0);
+
+		// switch position 0 to the benched fat_defender at roster index 2
+		let switch = Command::Switch {
+			current: PositionId(0),
+			new: RosterId(2),
+		};
+		let next = step(battle_state, vec![switch], &registry);
+
+		// the active mon at position 0 is now the fat_defender (species 1)
+		assert_eq!(next.get_mon(PositionId(0)).unwrap().species_id.0, 1);
+		// the field mapping now points position 0 at roster index 2
+		assert_eq!(next.field[PositionId(0)], RosterId(2));
+		// and the switched-OUT mon still exists in the roster (data preserved, not moved)
+		assert_eq!(next.roster.get_mon(RosterId(0)).as_ref().unwrap().species_id.0, 0);
+	}
 }
