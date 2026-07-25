@@ -46,8 +46,8 @@ pub fn main_loop() {
 
 		while !done {
 			let encoded = encoder::encode(&battle, &registry);
-			let agent_moveslot = agent.choose_move(&encoded, &registry);
-			let opponent_moveslot = opponent.choose_move(&encoded, &registry);
+			let agent_moveslot = agent.choose_move(&encoded);
+			let opponent_moveslot = opponent.choose_move(&encoded);
 			let actions = vec![
 				agent_moveslot.to_command(Team::Zero, PositionId(0), &battle),
 				opponent_moveslot.to_command(Team::One, PositionId(1), &battle)
@@ -87,6 +87,6 @@ pub fn main_loop() {
 
 
 	
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &registry));
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &registry));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry)));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry)));
 }
