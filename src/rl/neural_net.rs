@@ -1,5 +1,5 @@
 use core::error;
-use std::f32::consts::E;
+use std::{f32::consts::E, thread::current};
 
 use rand::{Rng, distr::Uniform};
 
@@ -63,10 +63,12 @@ where
 			battle_reward * gt * (self.last_probabilities[index] - indicator)
 		}).collect();
 
-		let (output_layer, hidden_layers) = self.layers
+		let (output_layer, hidden_layers) =
+			self.layers
 			.split_last_mut()
 			.expect("network needs at least one layer");
-
+		
+		(current_errors, pre_activation) = output_layer.backward(&current_errors, input_received);
 
 		for layer in hidden_layers.iter_mut().rev() {
 			current_errors.iter_mut().enumerate().for_each(|(i, x)|
