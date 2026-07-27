@@ -53,9 +53,7 @@ fn encode_mon(op_mon: Option<&PokemonState>, registry: &Registry) -> Vec<f32> {
 			assert!(v.len() == MON_ENCODING_LEN);
 			v
 		},
-		None => {
-			vec![0.0; MON_ENCODING_LEN]
-		},
+		None => vec![0.0; MON_ENCODING_LEN]
 	}
 	
 }
