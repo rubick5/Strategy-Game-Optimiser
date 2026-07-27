@@ -72,9 +72,9 @@ pub fn main_loop() {
 		let mut gt = 1.0;
 		loop {
 			match actions_and_states.pop() {
-				Some((battle_state, move_decision)) => {
+				Some((battle_encoding, move_decision)) => {
 					// don't forget to use 'reward' in here somewhere
-					agent.backprop(move_decision, battle_state, battle_reward, gt);
+					agent.backprop(move_decision, battle_reward, gt, &battle_encoding);
 				}
 				None => break,
 			}
