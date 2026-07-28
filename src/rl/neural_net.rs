@@ -83,13 +83,13 @@ where
 			.split_last_mut()
 			.expect("network needs at least one layer");
 
-		current_errors = output_layer.backward(&current_errors, input_received);
+		current_errors = output_layer.backward(&current_errors);
 
 		for (layer, pres) in hidden_layers.iter_mut().rev() {
 			current_errors.iter_mut().enumerate().for_each(|(i, x)|
 				*x = *x * (self.hidden_activation_prime)(pres[i])
 			);
-			current_errors = layer.backward(&current_errors, input_received);
+			current_errors = layer.backward(&current_errors);
 		}
 
 	}
@@ -120,7 +120,7 @@ impl NeuronLayer {
 		self.most_recent_output.clone()
 	}
 
-	pub fn backward(&mut self, incoming_error: &[f32], input_received: &[f32]) -> Vec<f32> {
+	pub fn backward(&mut self, incoming_error: &[f32]) -> Vec<f32> {
 		// we need to calculate the error to give to the next row here before we update the weights
 
 		let mut d_prev: Vec<f32> = vec![0.0; self.neurons[0].weights.len()];
@@ -130,8 +130,8 @@ impl NeuronLayer {
 			}
 		}
 
-		for (index, neuron) in self.neurons.iter_mut().rev().enumerate() {
-			neuron.backprop1(incoming_error[index], input_received);
+		for (index, neuron) in self.neurons.iter_mut().enumerate() {
+			neuron.backprop1(incoming_error[index], &self.most_recent_input);
 		}
 
 		d_prev
@@ -169,9 +169,9 @@ impl Neuron {
 	}
 	pub fn backprop1(&mut self, error: f32, input_given: &[f32]) {
 		for index in 0..self.weights.len() {
-			self.weights[index] += LEARNING_RATE * error * input_given[index];
+			self.weights[index] -= LEARNING_RATE * error * input_given[index];
 		}
-		self.bias += LEARNING_RATE * error;
+		self.bias -= LEARNING_RATE * error;
 
 	}
 
