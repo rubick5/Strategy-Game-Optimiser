@@ -19,25 +19,23 @@ pub struct NeuralNet<F>
 where
 	F: Fn(f32) -> f32
 {
+	// layers are stored with a cache of their pre-activations from the
+	// most recent forward (we populate the cache by running forward an
+	// extra time before back propagation)
 	layers: Vec<(NeuronLayer, Vec<f32>)>,
 	hidden_activation: F,
 	hidden_activation_prime: F,
-	pre_activations: Vec<Vec<f32>>,
 }
 
 impl<F> NeuralNet<F>
 where
 	F: Fn(f32) -> f32,
 {
-	fn clear_pre_activations(&mut self) {
-		self.pre_activations.clear();
-	}
 	pub fn gen_random(rng: &mut impl Rng, layer_sizes: &[usize], hidden_activation: F, hidden_activation_prime: F) -> Self {
 		Self {
 			layers: (0..layer_sizes.len()-1).map(|n| (NeuronLayer::gen_random(rng, layer_sizes[n], layer_sizes[n+1]), vec![])).collect(),
 			hidden_activation,
 			hidden_activation_prime,
-			pre_activations: vec![],
 		}
 	}
 
@@ -61,13 +59,9 @@ where
 
 	}
 
-	pub fn backward(&mut self, gt: f32, battle_reward: f32, move_chosen: Moveslot, input_received: &[f32], last_probabilities: &[f32]) {
+	pub fn backward(&mut self, mut current_errors: Vec<f32>, input_received: &[f32]) {
 		self.forward(input_received); // sets the pre_activation cache for this decision made
-		let move_chosen_index = move_chosen.to_number();
-		let mut current_errors: Vec<f32> = (0..last_probabilities.len()).map ( |index| {
-			let indicator = if index == move_chosen_index { 1.0 } else { 0.0 };
-			battle_reward * gt * (last_probabilities[index] - indicator)
-		}).collect();
+		
 
 		let ((output_layer, _), hidden_layers) =
 			self.layers

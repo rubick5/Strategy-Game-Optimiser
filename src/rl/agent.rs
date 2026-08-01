@@ -115,7 +115,14 @@ impl Agent
 	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
-		self.net.backward(gt, battle_reward, move_slot, &encoding, last_probabilities)
+
+		let move_chosen_index = move_slot.to_number();
+		let current_errors: Vec<f32> = (0..last_probabilities.len()).map ( |index| {
+			let indicator = if index == move_chosen_index { 1.0 } else { 0.0 };
+			battle_reward * gt * (last_probabilities[index] - indicator)
+		}).collect();
+
+		self.net.backward(current_errors, &encoding)
 	}
 }
 
