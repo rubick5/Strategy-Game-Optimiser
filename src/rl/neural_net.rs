@@ -22,7 +22,6 @@ where
 	layers: Vec<(NeuronLayer, Vec<f32>)>,
 	hidden_activation: F,
 	hidden_activation_prime: F,
-	last_probabilities: Vec<f32>,
 	pre_activations: Vec<Vec<f32>>,
 }
 
@@ -38,22 +37,15 @@ where
 			layers: (0..layer_sizes.len()-1).map(|n| (NeuronLayer::gen_random(rng, layer_sizes[n], layer_sizes[n+1]), vec![])).collect(),
 			hidden_activation,
 			hidden_activation_prime,
-			last_probabilities: vec![],
 			pre_activations: vec![],
 		}
 	}
 
-	pub fn forward_and_choose(&mut self, inputs: &[f32]) -> Moveslot {
-		let n = softmax_then_select(&self.forward(inputs));
-		Moveslot::from_number(n)
-	}
-
-	fn forward(&mut self, inputs: &[f32]) -> Vec<f32> {
+	pub fn forward(&mut self, inputs: &[f32]) -> Vec<f32> {
 		let mut output = inputs.to_owned();
 		let ((output_layer, output_pres), hidden_layers) = self.layers
 			.split_last_mut()
 			.expect("network needs at least one layer");
-
 
 		for (layer, pres) in hidden_layers.iter_mut() {
 			output = layer.forward(&output);
@@ -65,17 +57,16 @@ where
 
 		output = output_layer.forward(&output);
 		*output_pres = output.clone();
-		self.last_probabilities = softmax(&output);
 		output
 
 	}
 
-	pub fn backward(&mut self, gt: f32, battle_reward: f32, move_chosen: Moveslot, input_received: &[f32]) {
+	pub fn backward(&mut self, gt: f32, battle_reward: f32, move_chosen: Moveslot, input_received: &[f32], last_probabilities: &[f32]) {
 		self.forward(input_received); // sets the pre_activation cache for this decision made
 		let move_chosen_index = move_chosen.to_number();
-		let mut current_errors: Vec<f32> = (0..self.last_probabilities.len()).map ( |index| {
+		let mut current_errors: Vec<f32> = (0..last_probabilities.len()).map ( |index| {
 			let indicator = if index == move_chosen_index { 1.0 } else { 0.0 };
-			battle_reward * gt * (self.last_probabilities[index] - indicator)
+			battle_reward * gt * (last_probabilities[index] - indicator)
 		}).collect();
 
 		let ((output_layer, _), hidden_layers) =
@@ -175,20 +166,3 @@ impl Neuron {
 	}
 }
 
-fn softmax(logits: &[f32]) -> Vec<f32> {
-	let divisor: f32 = logits.iter().map(|x| E.powf(*x)).sum();
-	logits.iter().map(|x| E.powf(*x) / divisor).collect()
-}
-
-fn softmax_then_select(logits: &[f32]) -> usize {
-	let probabilities = softmax(logits);
-	let random_selection = rand::random();
-	let mut counter = 0.0;
-	for (index, prob) in probabilities.into_iter().enumerate() {
-		counter += prob;
-		if counter >= random_selection {
-			return index;
-		}
-	}
-	0
-}
