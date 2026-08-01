@@ -131,7 +131,7 @@ impl NeuronLayer {
 		}
 
 		for (index, neuron) in self.neurons.iter_mut().enumerate() {
-			neuron.backprop1(incoming_error[index], &self.most_recent_input);
+			neuron.backprop(incoming_error[index], &self.most_recent_input);
 		}
 
 		d_prev
@@ -167,12 +167,11 @@ impl Neuron {
 			bias
 		}
 	}
-	pub fn backprop1(&mut self, error: f32, input_given: &[f32]) {
+	pub fn backprop(&mut self, error: f32, input_given: &[f32]) {
 		for index in 0..self.weights.len() {
 			self.weights[index] -= LEARNING_RATE * error * input_given[index];
 		}
 		self.bias -= LEARNING_RATE * error;
-
 	}
 }
 
