@@ -60,6 +60,15 @@ impl Field {
 	pub fn all_field_mons(&self) -> &Vec<RosterId> {
 		&self.mons
 	}
+
+	pub fn team(&self, team: Team) -> Vec<&RosterId> {
+		match team {
+			Team::Zero => self.mons.iter().step_by(2).collect(),
+
+			Team::One => self.mons.iter().skip(1).step_by(2).collect()
+
+		}
+	}
 }
 
 impl std::ops::Index<PositionId> for Field {
@@ -111,12 +120,12 @@ impl Roster {
 			mons
 		}
 	}
-	pub fn team0(&self) -> impl Iterator<Item = &Option<PokemonState>> + '_ {
-		self.mons.iter().step_by(2)
-	}
 
-	pub fn team1(&self) -> impl Iterator<Item = &Option<PokemonState>> + '_ {
-		self.mons.iter().skip(1).step_by(2)
+	pub fn team(&self, team: Team) -> Vec<&Option<PokemonState>> {
+		match team {
+			Team::Zero => self.mons.iter().step_by(2).collect(),
+			Team::One => self.mons.iter().skip(1).step_by(2).collect()
+		}
 	}
 	/*
 	pub fn get(&self, pos: PositionId) -> Option<&PokemonState> {
@@ -154,12 +163,12 @@ impl BattleState {
 	pub fn outcome(&self) -> Option<Outcome> {
 		let mut side1_alive = false;
 		let mut side0_alive = false;
-		for mon in self.roster.team0().flatten() {
+		for mon in self.roster.team(Team::Zero).into_iter().flatten() {
 			if mon.current_hp > 0 {
 				side0_alive = true;
 			}
 		}
-		for mon in self.roster.team1().flatten() {
+		for mon in self.roster.team(Team::One).into_iter().flatten() {
 			if mon.current_hp > 0 {
 				side1_alive = true;
 			}

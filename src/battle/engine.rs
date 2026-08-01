@@ -52,7 +52,6 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	} else {
 		return None;
 	}
-
 }
 
 pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry) -> BattleState {

@@ -1,11 +1,12 @@
-use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, Team}}, model::registry::Registry, rl::{encoder, neural_net::NeuralNet}};
+use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, model::registry::Registry, rl::{encoder, mask::Mask, neural_net::NeuralNet}};
 use rand::{Rng, distr::{self, Uniform}, random};
 
 use std::{error::Error, f32::consts::E};
 
 // max moveslot discriminant
-const MAX_MOVESLOT: usize = 9;
+pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
 
+pub const MOVESLOT_COUNT: usize = 4;
 
 #[derive(Debug)]
 pub enum Moveslot {
@@ -42,7 +43,7 @@ impl Moveslot {
 			PositionId(1) => PositionId(0),
 			_ => panic!("someone tried to use a move, but they don't exist!")
 		};
-		
+
 		match self {
 			Switch(n) => {
 				let new: RosterId = RosterId(
@@ -90,7 +91,9 @@ impl Agent
 	}
 
 	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32]) {
-		self.net.backward(gt, battle_reward, move_slot, encoding)
+		//let encoding = encoder::encode(battle_state, registry);
+		//let mask = Mask::from_battle_state(team, pos, battle_state);
+		self.net.backward(gt, battle_reward, move_slot, &encoding)
 	}
 }
 
