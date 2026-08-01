@@ -29,3 +29,4 @@ def bladeguard_summoning ():
 	for bladeguard_summoning in range (30):
 		print ("bladeguard")
 bladeguard_summoning()
+

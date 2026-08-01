@@ -174,19 +174,6 @@ impl Neuron {
 		self.bias -= LEARNING_RATE * error;
 
 	}
-
-	pub fn backprop(&mut self, gt: f32, inputs: &[f32], our_action_taken: bool, p_ours: f32) {
-		assert!(inputs.len() == self.weights.len());
-
-		// we need to backprop on each weight in the neuron
-		let indicator = if our_action_taken { 1.0 } else { 0.0 };
-
-		for index in 0..self.weights.len() {
-			self.weights[index] += LEARNING_RATE * gt * inputs[index] * (indicator - p_ours);
-		}
-		self.bias += LEARNING_RATE * gt * (indicator - p_ours);
-	}
-
 }
 
 fn softmax(logits: &[f32]) -> Vec<f32> {
