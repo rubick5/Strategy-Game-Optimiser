@@ -1,7 +1,7 @@
-use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, model::registry::Registry, rl::{encoder, mask::Mask, neural_net::NeuralNet}};
-use rand::{Rng, distr::{self, Uniform}, random};
+use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
+use rand::Rng;
 
-use std::{error::Error, f32::consts::E};
+use std::f32::consts::E;
 
 // max moveslot discriminant
 pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
@@ -68,6 +68,24 @@ impl Moveslot {
 	}
 }
 
+fn softmax(logits: &[f32]) -> Vec<f32> {
+	let divisor: f32 = logits.iter().map(|x| E.powf(*x)).sum();
+	logits.iter().map(|x| E.powf(*x) / divisor).collect()
+}
+
+fn softmax_then_select(logits: &[f32]) -> usize {
+	let probabilities = softmax(logits);
+	let random_selection = rand::random();
+	let mut counter = 0.0;
+	for (index, prob) in probabilities.into_iter().enumerate() {
+		counter += prob;
+		if counter >= random_selection {
+			return index;
+		}
+	}
+	0
+}
+
 #[derive(Debug, Clone)]
 pub struct Agent
 {
@@ -77,8 +95,12 @@ pub struct Agent
 
 impl Agent
 {
-	pub fn choose_move(&mut self, representation: &[f32]) -> Moveslot {
-		self.net.forward_and_choose(representation)
+	pub fn choose_move(&mut self, representation: &[f32], mask: Mask) -> Moveslot {
+		let mut logits = self.net.forward(representation);
+		mask.apply(&mut logits); // edits them in place, remember
+
+		Moveslot::from_number(softmax_then_select(&logits))
+
 	}
 
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
@@ -90,10 +112,10 @@ impl Agent
 		}
 	}
 
-	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32]) {
+	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
-		self.net.backward(gt, battle_reward, move_slot, &encoding)
+		self.net.backward(gt, battle_reward, move_slot, &encoding, last_probabilities)
 	}
 }
 
