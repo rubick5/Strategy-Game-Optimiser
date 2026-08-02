@@ -1,16 +1,4 @@
-use core::error;
-use std::{f32::consts::E, thread::current};
-
-/*
-
-Next steps:
-1. fix caching/recalculation of pre-activation inputs for net back propagation
-2. 
- */
-
 use rand::{Rng, distr::Uniform};
-
-use crate::rl::agent::Moveslot;
 
 const LEARNING_RATE: f32 = 0.01;
 
@@ -78,10 +66,6 @@ where
 		}
 
 	}
-}
-
-fn activation_prime(x: f32) -> f32 {
-	if x > 0.0 { 1.0 } else { 0.0 }
 }
 
 #[derive(Debug, Clone)]

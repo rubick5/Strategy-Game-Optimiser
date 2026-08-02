@@ -1,6 +1,3 @@
-use std::clone;
-use std::collections::HashMap;
-
 use crate::model::pmove::MoveId;
 use crate::model::speciesdata::{SpeciesData, SpeciesId};
 use crate::model::registry::Registry;
