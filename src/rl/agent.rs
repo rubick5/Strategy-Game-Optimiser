@@ -1,3 +1,10 @@
+/// WE NEED TO ADD SOME ENCOURAGEMENT FOR ENTROPY INTO THE CODE
+/// SO THAT IT DOESNT JUST CONVERGE LIKE CRAZY
+// * Technique 1: x% of the time just pick a random action instead of the model's one
+// * Technique 2: use a entropy reward in the output layer's error to encourage the model to stay
+// * versatile. Also note that we can reduce the weight of this as we get further into training
+// * once the correct strategies have actually been figured out.
+
 use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
 use rand::Rng;
 
