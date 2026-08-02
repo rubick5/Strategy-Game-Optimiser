@@ -19,7 +19,7 @@ impl Moveslot {
 	pub fn from_number(n: usize) -> Self {
 		match n {
 			n if n < 4 => Slot(n),
-			n if n < 9 => Slot(n - 4),
+			n if n <= 9 => Switch(n - 4),
 			_ => panic!("INVALID MOVESLOT SELECTED")
 		}
 	}
@@ -95,16 +95,16 @@ pub struct Agent
 
 impl Agent
 {
-	pub fn choose_move(&mut self, representation: &[f32], mask: Mask) -> Moveslot {
+	pub fn choose_move(&mut self, representation: &[f32], mask: Mask) -> (Moveslot, Vec<f32>) {
 		let mut logits = self.net.forward(representation);
 		mask.apply(&mut logits); // edits them in place, remember
 
-		Moveslot::from_number(softmax_then_select(&logits))
+		(Moveslot::from_number(softmax_then_select(&logits)), softmax(&logits))
 
 	}
 
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
-		let layer_sizes = vec![weight_count, 64, 128, 4];
+		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
 		let relu = |x: f32| if x < 0.0 { 0.0 } else { x };
 		let relu_prime = |x: f32| if x < 0.0 { 0.0 } else { 1.0 };
 		Agent {

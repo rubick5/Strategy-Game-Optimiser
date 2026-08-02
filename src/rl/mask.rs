@@ -5,7 +5,7 @@ pub struct Mask {
 }
 
 impl Mask {
-	pub fn from_battle_state(team: Team, pos: PositionId, battle_state: BattleState) -> Self {
+	pub fn from_battle_state(team: Team, pos: PositionId, battle_state: &BattleState) -> Self {
 		let mut moveslots = [false; MOVESLOT_COUNT];
 		let current_mon = battle_state.get_mon(pos).unwrap();
 		
@@ -21,7 +21,7 @@ impl Mask {
 
 		for (index, mon) in battle_state.roster.team(team).iter().enumerate() {
 			switches[index] = match mon {
-				Some(poke_state) => if poke_state.current_hp == 0 { false } else { true },
+				Some(poke_state) => poke_state.current_hp != 0,
 				None => false
 			}
 		}
@@ -33,9 +33,11 @@ impl Mask {
 	}
 
 	pub fn apply(&self, pre_softmax: &mut [f32]) {
+		//println!("pre softmax len: {}", pre_softmax.len());
+		assert!(pre_softmax.len() == MAX_DECISION);
 		for (index, allowed) in self.allowed.iter().enumerate() {
 			if !allowed {
-				pre_softmax[index] = -1e-9
+				pre_softmax[index] = -1e9;
 			}
 		}
 	}
