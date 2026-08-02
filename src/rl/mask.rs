@@ -1,4 +1,4 @@
-use crate::{battle::state::{BattleState, PokemonState, PositionId, TEAM_SIZE, Team}, rl::agent::{MAX_DECISION, MOVESLOT_COUNT}};
+use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::agent::{MAX_DECISION, MOVESLOT_COUNT}};
 
 pub struct Mask {
 	allowed: [bool; MAX_DECISION]

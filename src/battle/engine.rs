@@ -107,7 +107,7 @@ fn calculate_damage(attack_stat: u32, defense_stat: u32, base_power: u32) -> u32
 	attack_stat * base_power / defense_stat
 }
 
-fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: PositionId, target: PositionId, mv: MoveId) {
+pub fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: PositionId, target: PositionId, mv: MoveId) {
 	let user_name = get_species_data(battle_state, registry, user).name;
 	let target_name = get_species_data(battle_state, registry, target).name;
 
@@ -115,7 +115,7 @@ fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: Positio
 	println!("{} used {} on {}", user_name, move_name, target_name);
 }
 
-fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
+pub fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
 	registry.get_pokemon(battle_state.get_mon(pos).unwrap().species_id).clone()
 }
 
@@ -127,8 +127,6 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
-
 	use crate::{battle::{command::MoveCommand, state::{Field, PositionId, Roster}}, model::{pmove::{MoveId, PMove}, speciesdata::SpeciesId}};
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
@@ -184,10 +182,6 @@ mod tests {
 	}
 
 	fn test_battle_state() -> BattleState {
-		let mons: HashMap<PositionId, PokemonState> = HashMap::from([
-			(PositionId(0), PokemonState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)])),
-			(PositionId(1), PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)])),
-		]);
 		let team0: Vec<PokemonState> = vec![
 			PokemonState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
 		];

@@ -1,5 +1,4 @@
-use crate::{battle::{command::Command, state::{BattleState, Field, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env, mask::Mask}};
-use rand::Rng;
+use crate::{battle::{state::{BattleState, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env, mask::Mask}};
 use crate::battle::state::Team;
 
 const DAMPING_CONSTANT: f32 = 0.95;
@@ -29,7 +28,7 @@ pub fn main_loop() {
 	let battle_state_1hp = BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1]);
 
 
-	let mut opponent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
+	let mut opponent: Agent;
 	for i in 0..60_000 {
 		//if i % 1000 == 0 {
 			//opponent = agent.clone();
