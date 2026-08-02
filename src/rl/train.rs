@@ -1,4 +1,4 @@
-use crate::{battle::{command::Command, state::{BattleState, Field, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env}};
+use crate::{battle::{command::Command, state::{BattleState, Field, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env, mask::Mask}};
 use rand::Rng;
 use crate::battle::state::Team;
 
@@ -31,9 +31,10 @@ pub fn main_loop() {
 
 	let mut opponent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 	for i in 0..60_000 {
-		if i % 1000 == 0 {
-			opponent = agent.clone();
-		}
+		//if i % 1000 == 0 {
+			//opponent = agent.clone();
+		//}
+		opponent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 		let mut battle: BattleState = if rand::random() {
 			battle_state_normal.clone()
 		} else {
@@ -41,18 +42,23 @@ pub fn main_loop() {
 		};
 		let mut done = false;
 
-		let mut actions_and_states: Vec<(Vec<f32>, Moveslot)> = Vec::new();
+		let mut actions_and_states: Vec<(Vec<f32>, Moveslot, Vec<f32>)> = Vec::new();
 		let mut battle_reward: f32 = -100.0;
 
 		while !done {
+			let agent_mask = Mask::from_battle_state(Team::Zero, PositionId(0), &battle);
+			let opponent_mask = Mask::from_battle_state(Team::One, PositionId(1), &battle);
+
 			let encoded = encoder::encode(&battle, &registry);
-			let agent_moveslot = agent.choose_move(&encoded);
-			let opponent_moveslot = opponent.choose_move(&encoded);
+
+			let (agent_moveslot, probabilities) = agent.choose_move(&encoded, agent_mask);
+			let (opponent_moveslot, _) = opponent.choose_move(&encoded, opponent_mask);
+
 			let actions = vec![
 				agent_moveslot.to_command(Team::Zero, PositionId(0), &battle),
 				opponent_moveslot.to_command(Team::One, PositionId(1), &battle)
 			];
-			actions_and_states.push((encoded, agent_moveslot));
+			actions_and_states.push((encoded, agent_moveslot, probabilities));
 			(battle, battle_reward, done) = env::step(battle, actions, &registry);
 		}
 		if battle_reward == 1.0 {
@@ -72,9 +78,9 @@ pub fn main_loop() {
 		let mut gt = 1.0;
 		loop {
 			match actions_and_states.pop() {
-				Some((battle_encoding, move_decision)) => {
+				Some((encoding, move_decision, probabilities)) => {
 					// don't forget to use 'reward' in here somewhere
-					agent.backprop(move_decision, battle_reward, gt, &battle_encoding);
+					agent.backprop(move_decision, battle_reward, gt, &encoding, &probabilities);
 				}
 				None => break,
 			}
@@ -85,8 +91,9 @@ pub fn main_loop() {
 	//println!("neuron one for our agent: {:?}", agent.neuron1.weights);
 	//println!("neuron two for our agent: {:?}", agent.neuron2.weights);
 
-
+	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_normal);
+	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp);
 	
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry)));
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry)));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), agent_mask_normal));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), agent_mask_1hp));
 }
