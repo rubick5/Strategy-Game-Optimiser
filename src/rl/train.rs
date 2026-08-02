@@ -43,8 +43,10 @@ pub fn main_loop() {
 
 		let mut actions_and_states: Vec<(Vec<f32>, Moveslot, Vec<f32>)> = Vec::new();
 		let mut battle_reward: f32 = -100.0;
+		let mut turn_count = 0;
+		while !done && turn_count < 1000 {
+			turn_count += 1;
 
-		while !done {
 			let agent_mask = Mask::from_battle_state(Team::Zero, PositionId(0), &battle);
 			let opponent_mask = Mask::from_battle_state(Team::One, PositionId(1), &battle);
 

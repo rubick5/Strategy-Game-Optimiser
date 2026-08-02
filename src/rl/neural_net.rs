@@ -1,6 +1,6 @@
 use rand::{Rng, distr::Uniform};
 
-const LEARNING_RATE: f32 = 0.01;
+const LEARNING_RATE: f32 = 0.002;
 
 #[derive(Debug, Clone)]
 pub struct NeuralNet<F>
