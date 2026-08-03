@@ -5,7 +5,7 @@
 // * versatile. Also note that we can reduce the weight of this as we get further into training
 // * once the correct strategies have actually been figured out.
 
-use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
+use crate::{battle::{self, command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
 use rand::Rng;
 
 use std::f32::consts::E;
@@ -14,6 +14,8 @@ use std::f32::consts::E;
 pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
 
 pub const MOVESLOT_COUNT: usize = 4;
+
+pub const BASELINE_LEARNING_RATE: f32 = 0.01;
 
 #[derive(Debug)]
 pub enum Moveslot {
@@ -136,6 +138,7 @@ fn softmax_then_select(logits: &[f32]) -> usize {
 pub struct Agent
 {
 	pub net: NeuralNet<fn(f32) -> f32>,
+	pub baseline: f32,
 }
 
 impl Agent
@@ -165,7 +168,8 @@ impl Agent
 		let relu = |x: f32| if x < 0.0 { 0.0 } else { x };
 		let relu_prime = |x: f32| if x < 0.0 { 0.0 } else { 1.0 };
 		Agent {
-			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime)
+			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),
+			baseline: 0.0,
 		}
 	}
 
@@ -179,7 +183,7 @@ impl Agent
 		let move_chosen_index = move_slot.to_number();
 		let current_errors: Vec<f32> = (0..last_probabilities.len()).map ( |index| {
 			let indicator = if index == move_chosen_index { 1.0 } else { 0.0 };
-			battle_reward * gt * (last_probabilities[index] - indicator)
+			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator)
 		}).collect();
 
 		self.net.backward(current_errors, &encoding)

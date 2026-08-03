@@ -1,6 +1,6 @@
-use rand::{Rng, random};
+use rand::Rng;
 
-use crate::{battle::{state::{BattleState, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env, mask::Mask}};
+use crate::{battle::state::{BattleState, PokemonState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, BASELINE_LEARNING_RATE, Moveslot}, encoder, env, mask::Mask}};
 use crate::battle::state::Team;
 
 const DAMPING_CONSTANT: f32 = 0.95;
@@ -82,6 +82,7 @@ pub fn main_loop() {
 
 		// we call a function from Agent which will update the weights?
 		let mut gt = 1.0;
+		agent.baseline += (battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
 		loop {
 			match actions_and_states.pop() {
 				Some((encoding, move_decision, probabilities)) => {
