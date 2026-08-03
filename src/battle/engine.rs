@@ -1,3 +1,5 @@
+use rand::Rng;
+
 use crate::battle::state::{BattleState, PositionId};
 use crate::battle::command::Command;
 use crate::battle::event::Event;
@@ -9,7 +11,7 @@ use crate::model::speciesdata::{SpeciesData, Stat};
 
 const SWITCHING_PRIO: i8 = 9;
 
-fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState) -> Option<Command> {
+fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState, rng: &mut impl Rng) -> Option<Command> {
 	if commands.is_empty() {
 		return None;
 	}
@@ -42,7 +44,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 			highest_prio = prio;
 			highest_speed = speed;
 			highest_command_index = Some(index);
-		} else if prio == highest_prio && speed == highest_speed && rand::random::<bool>() {
+		} else if prio == highest_prio && speed == highest_speed && rng.random::<bool>() {
 			// exact speed tie -> break it with a coin flip (favours neither side)
 			highest_command_index = Some(index);
 		}
@@ -55,7 +57,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	}
 }
 
-pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry) -> BattleState {
+pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> BattleState {
 	let mut commands: Vec<Command> = commands.clone();
 	let mut events: Vec<Event> = Vec::new();
 	loop {
@@ -76,7 +78,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
-				match get_next_command(&mut commands, registry, &battle_state) {
+				match get_next_command(&mut commands, registry, &battle_state, rng) {
 					Some(Command::MoveAction(move_command)) => {
 						let mv = registry.get_move(move_command.move_id);
 						let user: &PokemonState = battle_state.get_mon(move_command.user).unwrap();
@@ -227,11 +229,12 @@ mod tests {
 	#[test]
 	fn uses_correct_stats_for_damage_calc() {
 		let registry = test_registry();
+		let mut rng = rand::rng();
 
 		let battle_state = test_battle_state();
 		let fat_hp = battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
-		let next_battle_state = step(battle_state, vec![frail_uses_tackle()], &registry);
+		let next_battle_state = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng);
 		let fat_hp_after = next_battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
 		let tackle_power = tackle().base_power;
@@ -246,14 +249,15 @@ mod tests {
 	#[test]
 	fn higher_priority_goes_first() {
 		let registry = test_registry();
+		let mut rng = rand::rng();
 		let battle_state = test_battle_state();
 
 
 		let mut v = vec![frail_uses_tackle(), fat_uses_quick_attack()];
 
 		// fat using quick attack comes first because of priority
-		let x = get_next_command(&mut v, &registry, &battle_state);
-		let y = get_next_command(&mut v, &registry, &battle_state);
+		let x = get_next_command(&mut v, &registry, &battle_state, &mut rng);
+		let y = get_next_command(&mut v, &registry, &battle_state, &mut rng);
 		assert!(x == Some(fat_uses_quick_attack()));
 		assert!(y == Some(frail_uses_tackle()));
 
@@ -263,11 +267,12 @@ mod tests {
 	fn faster_speed_goes_first() {
 		let registry = test_registry();
 		let battle_state = test_battle_state();
+		let mut rng = rand::rng();
 
 		let mut v = vec![fat_uses_tackle(), frail_uses_tackle()];
 
-		assert!(get_next_command(&mut v, &registry, &battle_state) == Some(frail_uses_tackle()));
-		assert!(get_next_command(&mut v, &registry, &battle_state) == Some(fat_uses_tackle()));
+		assert!(get_next_command(&mut v, &registry, &battle_state, &mut rng) == Some(frail_uses_tackle()));
+		assert!(get_next_command(&mut v, &registry, &battle_state, &mut rng) == Some(fat_uses_tackle()));
 
 	}
 
@@ -275,6 +280,7 @@ mod tests {
 	#[test]
 	fn example_step() {
 		let registry = Registry::load();
+		let mut rng = rand::rng();
 
 		let battle_state = test_battle_state();
 
@@ -284,7 +290,7 @@ mod tests {
 			targets: vec![PositionId(1)]
 		});
 
-		let new_state = step(battle_state, vec![command1], &registry);
+		let new_state = step(battle_state, vec![command1], &registry, &mut rng);
 
 		println!("{:?}", new_state);
 	}
@@ -294,6 +300,7 @@ mod tests {
 		use crate::battle::state::RosterId;
 
 		let registry = test_registry();
+		let mut rng = rand::rng();
 
 		// team0 has TWO mons: frail_attacker (roster 0) and fat_defender (roster 2).
 		// team1 has one mon (roster 1). field starts pointing position 0 -> roster 0.
@@ -314,7 +321,7 @@ mod tests {
 			current: PositionId(0),
 			new: RosterId(2),
 		};
-		let next = step(battle_state, vec![switch], &registry);
+		let next = step(battle_state, vec![switch], &registry, &mut rng);
 
 		// the active mon at position 0 is now the fat_defender (species 1)
 		assert_eq!(next.get_mon(PositionId(0)).unwrap().species_id.0, 1);

@@ -1,9 +1,11 @@
+use rand::Rng;
+
 use crate::{battle::{command::Command, state::{BattleState, Outcome}}, model::registry::Registry};
 use crate::battle::engine;
 
-pub fn step(battle_state: BattleState, actions: Vec<Command>, registry: &Registry) -> (BattleState, f32, bool) {
+pub fn step(battle_state: BattleState, actions: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> (BattleState, f32, bool) {
 
-	let next_state = engine::step(battle_state, actions, registry);
+	let next_state = engine::step(battle_state, actions, registry, rng);
 
 	let finished: bool;
 	let reward = match next_state.outcome() {

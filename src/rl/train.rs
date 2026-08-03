@@ -14,8 +14,7 @@ const EXPLORATION_CHANCE: f32 = 0.05;
 	(We need to figure out what loss means)
 */
 
-pub fn main_loop() {
-	let mut rng = rand::rng();
+pub fn main_loop(mut rng: &mut impl Rng) {
 	let registry = Registry::load();
 	let mut agent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 	let mut battles_won = 0;
@@ -37,7 +36,7 @@ pub fn main_loop() {
 			//opponent = agent.clone();
 		//}
 		opponent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
-		let mut battle: BattleState = if rand::random() {
+		let mut battle: BattleState = if rng.random::<bool>() {
 			battle_state_normal.clone()
 		} else {
 			battle_state_1hp.clone()
@@ -54,18 +53,18 @@ pub fn main_loop() {
 			let opponent_mask = Mask::from_battle_state(Team::One, PositionId(1), &battle);
 
 			let encoded = encoder::encode(&battle, &registry);
-			let (mut agent_moveslot, probabilities) = agent.choose_move(&encoded, &agent_mask);
+			let (mut agent_moveslot, probabilities) = agent.choose_move(&encoded, &agent_mask, &mut rng);
 			if rng.random::<f32>() < EXPLORATION_CHANCE {
 				agent_moveslot = agent_mask.get_random_valid(&mut rng).unwrap();
 			}
-			let (opponent_moveslot, _) = opponent.choose_move(&encoded, &opponent_mask);
+			let (opponent_moveslot, _) = opponent.choose_move(&encoded, &opponent_mask, &mut rng);
 
 			let actions = vec![
 				agent_moveslot.to_command(Team::Zero, PositionId(0), &battle),
 				opponent_moveslot.to_command(Team::One, PositionId(1), &battle)
 			];
 			actions_and_states.push((encoded, agent_moveslot, probabilities));
-			(battle, battle_reward, done) = env::step(battle, actions, &registry);
+			(battle, battle_reward, done) = env::step(battle, actions, &registry, &mut rng);
 		}
 		if battle_reward == 1.0 {
 			battles_won += 1;
@@ -101,6 +100,6 @@ pub fn main_loop() {
 	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_normal);
 	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp);
 	
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &agent_mask_normal));
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &agent_mask_1hp));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &agent_mask_normal, &mut rng));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &agent_mask_1hp, &mut rng));
 }
