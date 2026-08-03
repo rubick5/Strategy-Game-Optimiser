@@ -1,3 +1,5 @@
+use crate::model::pmove::MoveTargeting;
+use crate::model::pmove::MoveType;
 use crate::model::speciesdata::SpeciesData;
 use crate::model::speciesdata::SpeciesId;
 use crate::model::pmove::PMove;
@@ -39,6 +41,8 @@ impl Registry {
 		let tackle = PMove {
 			name: String::from("tackle"),
 			move_id: MoveId(0),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
 			base_power: 40,
 			effects: vec![],
 			base_prio: 0,
@@ -47,10 +51,13 @@ impl Registry {
 		let quick_attack = PMove {
 			name: String::from("quick-attack"),
 			move_id: MoveId(1),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
 			base_power: 25,
 			effects: vec![],
 			base_prio: 1,
 		};
+
 		Registry {
 			pokemon: vec![frail_attacker, fat_defender],
 			moves: vec![tackle, quick_attack],
