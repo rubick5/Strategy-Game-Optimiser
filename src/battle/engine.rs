@@ -116,7 +116,7 @@ pub fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: Pos
 	println!("{} used {} on {}", user_name, move_name, target_name);
 }
 
-pub fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
+fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
 	registry.get_pokemon(battle_state.get_mon(pos).unwrap().species_id).clone()
 }
 
