@@ -1,6 +1,8 @@
-use rand::{Rng, distr::Uniform};
+use rand::Rng;
+use rand_distr::Normal;
 
-const LEARNING_RATE: f32 = 0.0002;
+const LEARNING_RATE: f32 = 0.0005;
+const CLIP: f32 = 0.1;
 
 #[derive(Debug, Clone)]
 pub struct NeuralNet<F>
@@ -127,7 +129,7 @@ impl Neuron {
 	}
 
 	pub fn gen_random(weight_count: usize, rng: &mut impl Rng) -> Self {
-		let distribution = Uniform::new(-1.0, 1.0).unwrap();
+		let distribution = Normal::new(0.0, (2.0 / weight_count as f32).sqrt()).unwrap();
 		let weights = rng.sample_iter(distribution).take(weight_count).collect();
 		let bias = 0.0; //rng.random_range(-2.0..2.0);
 
@@ -138,7 +140,7 @@ impl Neuron {
 	}
 	pub fn backprop(&mut self, error: f32, input_given: &[f32]) {
 		for index in 0..self.weights.len() {
-			self.weights[index] -= LEARNING_RATE * error * input_given[index];
+			self.weights[index] -= (LEARNING_RATE * error * input_given[index]).clamp(-CLIP, CLIP);
 		}
 		self.bias -= LEARNING_RATE * error;
 	}

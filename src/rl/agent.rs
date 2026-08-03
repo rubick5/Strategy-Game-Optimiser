@@ -5,13 +5,15 @@
 // * versatile. Also note that we can reduce the weight of this as we get further into training
 // * once the correct strategies have actually been figured out.
 
-use crate::{battle::{self, command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
+use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
 use rand::Rng;
 
 use std::f32::consts::E;
 
 // max moveslot discriminant
 pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
+
+pub const RELU_LEAK: f32 = 0.01;
 
 pub const MOVESLOT_COUNT: usize = 4;
 
@@ -121,9 +123,9 @@ fn logit_max(logits: &[f32]) -> Option<f32> {
  * Inherits panicking behaviour from softmax function on
  * empty logits
  */
-fn softmax_then_select(logits: &[f32]) -> usize {
+fn softmax_then_select(logits: &[f32], rng: &mut impl Rng) -> usize {
 	let probabilities = softmax(logits);
-	let random_selection = rand::random();
+	let random_selection = rng.random();
 	let mut counter = 0.0;
 	for (index, prob) in probabilities.into_iter().enumerate() {
 		counter += prob;
@@ -149,11 +151,11 @@ impl Agent
 	 * Returns a pair (x, y) where x is a randomly selected move from the probabilities
 	 * and y is the calculated probabilities.
 	 */
-	pub fn choose_move(&mut self, representation: &[f32], mask: &Mask) -> (Moveslot, Vec<f32>) {
+	pub fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut impl Rng) -> (Moveslot, Vec<f32>) {
 		let mut logits = self.net.forward(representation);
 		mask.apply(&mut logits); // edits them in place, remember
 
-		(Moveslot::from_number(softmax_then_select(&logits)), softmax(&logits))
+		(Moveslot::from_number(softmax_then_select(&logits, rng)), softmax(&logits))
 
 	}
 
@@ -165,8 +167,8 @@ impl Agent
 	 */
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
-		let relu = |x: f32| if x < 0.0 { 0.0 } else { x };
-		let relu_prime = |x: f32| if x < 0.0 { 0.0 } else { 1.0 };
+		let relu = |x: f32| if x < 0.0 { RELU_LEAK * x } else { x };
+		let relu_prime = |x: f32| if x < 0.0 { RELU_LEAK } else { 1.0 };
 		Agent {
 			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),
 			baseline: 0.0,
