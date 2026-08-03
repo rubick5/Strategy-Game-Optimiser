@@ -70,6 +70,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 
 			Some(Event::Switch { current, new }) => {
 				battle_state.field[current] = new; // wow that was easy lol
+				//battle_state.get_mut_mon(current).unwrap().stat_changes.attack = 6;
 			},
 			None => {
 				// this is where we will handle our commands (there are no events to
