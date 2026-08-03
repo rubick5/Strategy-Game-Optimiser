@@ -3,6 +3,7 @@ use crate::battle::command::Command;
 use crate::battle::event::Event;
 use crate::battle::state::PokemonState;
 use crate::model::pmove::MoveId;
+use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::{SpeciesData, Stat};
 
@@ -128,7 +129,7 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 
 #[cfg(test)]
 mod tests {
-	use crate::{battle::{command::MoveCommand, state::{Field, PositionId, Roster}}, model::{pmove::{MoveId, PMove}, speciesdata::SpeciesId}};
+	use crate::{battle::{command::MoveCommand, state::{Field, PositionId, Roster}}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
 	use super::*;
@@ -159,6 +160,8 @@ mod tests {
 		PMove {
 			name: String::from("tackle"),
 			move_id: MoveId(0),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
 			base_power: 40,
 			effects: vec![],
 			base_prio: 0,
@@ -169,6 +172,8 @@ mod tests {
 		PMove {
 			name: String::from("quick-attack"),
 			move_id: MoveId(1),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
 			base_power: 40,
 			effects: vec![],
 			base_prio: 1,
@@ -242,7 +247,7 @@ mod tests {
 	fn higher_priority_goes_first() {
 		let registry = test_registry();
 		let battle_state = test_battle_state();
-		
+
 
 		let mut v = vec![frail_uses_tackle(), fat_uses_quick_attack()];
 
