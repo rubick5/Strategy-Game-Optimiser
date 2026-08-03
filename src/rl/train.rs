@@ -29,7 +29,8 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 	let battle_state_normal = BattleState::from(vec![ps0], vec![ps1], vec![0, 1]);
 	let battle_state_1hp = BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1]);
 
-
+	let mut best_agent: Agent = Agent::init_random(3, rng);
+	let mut max_battles_won: i32 = 0;
 	let mut opponent: Agent;
 	for i in 0..60_000 {
 		//if i % 1000 == 0 {
@@ -71,6 +72,10 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 		}
 		if i % 500 == 0 {
 			println!("iter {}: battles won: {}", i, battles_won);
+			if battles_won > max_battles_won {
+				best_agent = agent.clone();
+				max_battles_won = battles_won;
+			}
 			battles_won = 0;
 		}
 		//println!("battle: {:?}, reward: {}", battle, battle_reward);
@@ -102,4 +107,6 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 	
 	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &agent_mask_normal, &mut rng));
 	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &agent_mask_1hp, &mut rng));
+	println!("best agent normal: {:?}", best_agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &agent_mask_normal, &mut rng));
+	println!("best agent 1hp: {:?}", best_agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &agent_mask_1hp, &mut rng));
 }
