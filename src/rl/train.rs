@@ -1,7 +1,10 @@
+use rand::{Rng, random};
+
 use crate::{battle::{state::{BattleState, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, Moveslot}, encoder, env, mask::Mask}};
 use crate::battle::state::Team;
 
 const DAMPING_CONSTANT: f32 = 0.95;
+const EXPLORATION_CHANCE: f32 = 0.05;
 
 /* We want to:
 	* Model a strategy as a net
@@ -51,9 +54,11 @@ pub fn main_loop() {
 			let opponent_mask = Mask::from_battle_state(Team::One, PositionId(1), &battle);
 
 			let encoded = encoder::encode(&battle, &registry);
-
-			let (agent_moveslot, probabilities) = agent.choose_move(&encoded, agent_mask);
-			let (opponent_moveslot, _) = opponent.choose_move(&encoded, opponent_mask);
+			let (mut agent_moveslot, probabilities) = agent.choose_move(&encoded, &agent_mask);
+			if rng.random::<f32>() < EXPLORATION_CHANCE {
+				agent_moveslot = agent_mask.get_random_valid(&mut rng).unwrap();
+			}
+			let (opponent_moveslot, _) = opponent.choose_move(&encoded, &opponent_mask);
 
 			let actions = vec![
 				agent_moveslot.to_command(Team::Zero, PositionId(0), &battle),
@@ -95,6 +100,6 @@ pub fn main_loop() {
 	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_normal);
 	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp);
 	
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), agent_mask_normal));
-	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), agent_mask_1hp));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_normal, &registry), &agent_mask_normal));
+	println!("{:?}", agent.choose_move(&encoder::encode(&battle_state_1hp, &registry), &agent_mask_1hp));
 }

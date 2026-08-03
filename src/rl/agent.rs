@@ -23,6 +23,11 @@ pub enum Moveslot {
 use Moveslot::*;
 
 impl Moveslot {
+	/**
+	 * Creates a moveslot from a number
+
+	 * Great for using indexes of probability vectors
+	 */
 	pub fn from_number(n: usize) -> Self {
 		match n {
 			n if n < 4 => Slot(n),
@@ -30,6 +35,12 @@ impl Moveslot {
 			_ => panic!("INVALID MOVESLOT SELECTED")
 		}
 	}
+
+	/**
+	 * Translates a moveslot back into a number
+
+	 * Inverse of from_number function
+	 */
 	pub fn to_number(&self) -> usize {
 		match self {
 			Switch(n) => n + 4,
@@ -37,6 +48,12 @@ impl Moveslot {
 		}
 	}
 
+	/**
+	 * Uses the context provided by the battlestate and who is using the move to translate
+	 * itself (a moveslot) into an engine-approved command.
+
+	 * This will need significant changes later as we add different types of moves
+	 */
 	pub fn to_command(&self, team: Team, user: PositionId, battle_state: &BattleState) -> Command {
 		// get the right pokemon
 		// choose the right moveslot / switch
@@ -75,11 +92,33 @@ impl Moveslot {
 	}
 }
 
+/**
+ * Computes the softmax of the logits given
+ * 
+ * Currently panics on empty logits
+ */
 fn softmax(logits: &[f32]) -> Vec<f32> {
-	let divisor: f32 = logits.iter().map(|x| E.powf(*x)).sum();
-	logits.iter().map(|x| E.powf(*x) / divisor).collect()
+	let m = logit_max(logits).unwrap();
+	let divisor: f32 = logits.iter().map(|x| E.powf(*x - m)).sum();
+	logits.iter().map(|x| E.powf(*x - m) / divisor).collect()
 }
 
+/**
+ * Finds the largest element in a slice of f32s
+ * 
+ * Returns none for empty slice
+ */
+fn logit_max(logits: &[f32]) -> Option<f32> {
+	logits.iter().copied().reduce(f32::max)
+}
+
+/**
+ * Performs softmax then randomly chooses an index based
+ * on the probabilities calculated
+ * 
+ * Inherits panicking behaviour from softmax function on
+ * empty logits
+ */
 fn softmax_then_select(logits: &[f32]) -> usize {
 	let probabilities = softmax(logits);
 	let random_selection = rand::random();
@@ -96,13 +135,18 @@ fn softmax_then_select(logits: &[f32]) -> usize {
 #[derive(Debug, Clone)]
 pub struct Agent
 {
-	// a bunch of weights telling us what to do
 	pub net: NeuralNet<fn(f32) -> f32>,
 }
 
 impl Agent
 {
-	pub fn choose_move(&mut self, representation: &[f32], mask: Mask) -> (Moveslot, Vec<f32>) {
+	/**
+	 * Runs the encoding through the network then applies the mask to the logits.
+	 *
+	 * Returns a pair (x, y) where x is a randomly selected move from the probabilities
+	 * and y is the calculated probabilities.
+	 */
+	pub fn choose_move(&mut self, representation: &[f32], mask: &Mask) -> (Moveslot, Vec<f32>) {
 		let mut logits = self.net.forward(representation);
 		mask.apply(&mut logits); // edits them in place, remember
 
@@ -110,6 +154,12 @@ impl Agent
 
 	}
 
+	/**
+	 * Initialises the agent neural network with random weights everywhere.
+
+	 * Size and number of hidden layers are defined in a magic number vector here, at some point
+	 * that should be moved out...
+	 */
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
 		let relu = |x: f32| if x < 0.0 { 0.0 } else { x };
@@ -119,6 +169,9 @@ impl Agent
 		}
 	}
 
+	/**
+	 * Learns from previous mistakes or successes. Needs a bunch of weird arguments for the maths to work out.
+	 */
 	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);

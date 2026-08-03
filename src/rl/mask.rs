@@ -1,4 +1,6 @@
-use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::agent::{MAX_DECISION, MOVESLOT_COUNT}};
+use rand::{Rng, seq::IteratorRandom};
+
+use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::agent::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
 
 pub struct Mask {
 	allowed: [bool; MAX_DECISION]
@@ -40,6 +42,18 @@ impl Mask {
 				pre_softmax[index] = -1e9;
 			}
 		}
+	}
+
+	/**
+	 * Returns a random valid action from our mask.
+	 * Yields None if there are no valid actions
+	 */
+	pub fn get_random_valid(&self, rng: &mut impl Rng) -> Option<Moveslot> {
+		//println!("{:?}", self.allowed);
+		self.allowed.iter().enumerate()
+			.filter(|(_, b)| **b)
+			.map(|(index, _)| Moveslot::from_number(index))
+			.choose(rng)
 	}
 
 }
