@@ -1,7 +1,8 @@
 use rand::Rng;
 
-use crate::battle::state::{BattleState, PositionId};
-use crate::battle::command::Command;
+use crate::battle;
+use crate::battle::state::{BattleState, PositionId, RosterId};
+use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
 use crate::battle::state::PokemonState;
 use crate::model::pmove::MoveId;
@@ -51,10 +52,42 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	}
 
 	if let Some(i) = highest_command_index {
-		return Some(commands.remove(i));
+		Some(commands.remove(i))
 	} else {
-		return None;
+		None
 	}
+}
+
+fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &BattleState, events: &mut Vec<Event>) {
+	let mv = registry.get_move(move_command.move_id);
+	let user: &PokemonState = battle_state.get_mon(move_command.user).unwrap();
+
+	let user_attack = user.get_stat(Stat::Attack, registry);
+
+	for target_pos in move_command.targets {
+		let target: &PokemonState = battle_state.get_mon(target_pos).unwrap();
+		let target_defense =  target.get_stat(Stat::Defense, registry);
+
+		//log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
+
+		events.push(Event::DealDamage {
+			amount: calculate_damage(user_attack, target_defense, mv.base_power),
+			target: target_pos
+		});
+	}
+}
+
+fn handle_damage_event(amount: u32, target: PositionId, battle_state: &mut BattleState) {
+	let target_state: &mut PokemonState = battle_state.get_mut_mon(target).unwrap();
+	//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
+	target_state.current_hp = target_state.current_hp.saturating_sub(amount);
+	if target_state.current_hp == 0 {
+		battle_state.switch_needed.push(target);
+	}
+}
+
+fn handle_switch_event(current: PositionId, new: RosterId, battle_state: &mut BattleState) {
+	battle_state.field[current] = new;
 }
 
 pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> BattleState {
@@ -63,39 +96,18 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 	loop {
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
-				let target_state: &mut PokemonState = battle_state.get_mut_mon(target).unwrap();
-				//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
-				target_state.current_hp = target_state.current_hp.saturating_sub(amount);
-				if target_state.current_hp == 0 {
-					battle_state.switch_needed.push(target);
-				}
+				handle_damage_event(amount, target, &mut battle_state)
 			}
 
 			Some(Event::Switch { current, new }) => {
-				battle_state.field[current] = new; // wow that was easy lol
-				//battle_state.get_mut_mon(current).unwrap().stat_changes.attack = 6;
+				handle_switch_event(current, new, &mut battle_state);
 			},
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
 				match get_next_command(&mut commands, registry, &battle_state, rng) {
 					Some(Command::MoveAction(move_command)) => {
-						let mv = registry.get_move(move_command.move_id);
-						let user: &PokemonState = battle_state.get_mon(move_command.user).unwrap();
-
-						let user_attack = user.get_stat(Stat::Attack, registry);
-
-						for target_pos in move_command.targets {
-							let target: &PokemonState = battle_state.get_mon(target_pos).unwrap();
-							let target_defense =  target.get_stat(Stat::Defense, registry);
-
-							//log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
-
-							events.push(Event::DealDamage {
-								amount: calculate_damage(user_attack, target_defense, mv.base_power),
-								target: target_pos
-							});
-						}
+						execute_move(move_command, registry, &battle_state, &mut events);
 					},
 					Some(Command::Switch {current, new}) => 
 						events.push(Event::Switch { current, new }),
