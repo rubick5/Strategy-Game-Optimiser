@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::battle::state::{BattleState, PositionId, RosterId};
+use crate::battle::state::{BattleState, Outcome, PositionId, RosterId};
 use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
 use crate::battle::state::PokemonState;
@@ -92,7 +92,18 @@ fn handle_switch_event(current: PositionId, new: RosterId, battle_state: &mut Ba
 	battle_state.field[current] = new;
 }
 
-pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> BattleState {
+pub enum StepRequest {
+	NeedsActions,
+	NeedsReplacements(Vec<PositionId>),
+	Finished(Outcome),
+}
+
+pub struct StepResult {
+	battle_state: BattleState,
+	step_request: StepRequest,
+}
+
+pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> StepResult {
 	let mut commands: Vec<Command> = commands.clone();
 	let mut events: Vec<Event> = Vec::new();
 	loop {
