@@ -67,7 +67,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 				//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
 				target_state.current_hp = target_state.current_hp.saturating_sub(amount);
 				if target_state.current_hp == 0 {
-					//println!("TODO: FLAG ANY DEATH");
+					battle_state.switch_needed.push(target);
 				}
 			}
 
@@ -131,7 +131,7 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 
 #[cfg(test)]
 mod tests {
-	use crate::{battle::{command::MoveCommand, state::{Field, PositionId, Roster}}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
+	use crate::{battle::{command::MoveCommand, state::PositionId}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
 	use super::*;
@@ -196,10 +196,11 @@ mod tests {
 		let team1: Vec<PokemonState> = vec![
 			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
-		BattleState {
-			roster: Roster::from(team0, team1),
-			field: Field::from(vec![0, 1])
-		}
+		BattleState::from(
+			team0,
+			team1,
+			vec![0, 1],
+		)
 	}
 
 	fn frail_uses_tackle() -> Command {

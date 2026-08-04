@@ -147,6 +147,7 @@ impl Roster {
 pub struct BattleState {
 	pub roster: Roster,
 	pub field: Field,
+	pub switch_needed: Vec<PositionId>,
 }
 
 impl BattleState {
@@ -154,6 +155,7 @@ impl BattleState {
 		BattleState {
 			field: Field::from(field),
 			roster: Roster::from(team0, team1),
+			switch_needed: vec![],
 		}
 	}
 
