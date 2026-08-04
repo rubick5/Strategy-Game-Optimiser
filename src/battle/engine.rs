@@ -1,6 +1,5 @@
 use rand::Rng;
 
-use crate::battle;
 use crate::battle::state::{BattleState, PositionId, RosterId};
 use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
@@ -11,14 +10,16 @@ use crate::model::registry::Registry;
 use crate::model::speciesdata::{SpeciesData, Stat};
 
 const SWITCHING_PRIO: i8 = 9;
+const MIN_PRIORITY: i8 = -7;
+const MIN_SPEED: u32 = 0;
 
 fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState, rng: &mut impl Rng) -> Option<Command> {
 	if commands.is_empty() {
 		return None;
 	}
 	// we need the thing with the highest priority and the highest speed!
-	let mut highest_prio = -10;
-	let mut highest_speed = 0;
+	let mut highest_prio = MIN_PRIORITY;
+	let mut highest_speed = MIN_SPEED;
 	let mut highest_command_index: Option<usize> = None;
 	for (index, command) in commands.iter().enumerate() {
 		let (prio, speed) = match command {
@@ -47,6 +48,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 			highest_command_index = Some(index);
 		} else if prio == highest_prio && speed == highest_speed && rng.random::<bool>() {
 			// exact speed tie -> break it with a coin flip (favours neither side)
+			// note this method gives a higher chance to later moves in the vector with same speed to go first...
 			highest_command_index = Some(index);
 		}
 	}
