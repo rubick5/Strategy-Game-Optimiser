@@ -58,7 +58,7 @@ impl Moveslot {
 
 	 * This will need significant changes later as we add different types of moves
 	 */
-	pub fn to_command(&self, team: Team, user: PositionId, battle_state: &BattleState) -> Command {
+	pub fn to_command(&self, user: PositionId, battle_state: &BattleState) -> Command {
 		// get the right pokemon
 		// choose the right moveslot / switch
 		// make and return the command
@@ -71,6 +71,7 @@ impl Moveslot {
 			PositionId(1) => PositionId(0),
 			_ => panic!("someone tried to use a move, but they don't exist!")
 		};
+		let team = user.team();
 
 		match self {
 			Switch(n) => {
