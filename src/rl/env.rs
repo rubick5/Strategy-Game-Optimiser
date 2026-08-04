@@ -1,23 +1,23 @@
+/*/
 use rand::Rng;
 
-use crate::{battle::{command::Command, state::{BattleState, Outcome}}, model::registry::Registry};
+use crate::{battle::{command::Command, engine::{StepRequest, StepResult}, state::{BattleState, Outcome::{self, Side0Wins}}}, model::registry::Registry};
 use crate::battle::engine;
+pub fn step(old_battle_state: BattleState, actions: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> (BattleState, ) {
 
-pub fn step(battle_state: BattleState, actions: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> (BattleState, f32, bool) {
-
-	let next_state = engine::step(battle_state, actions, registry, rng);
+	let StepResult { battle_state, step_request } = engine::step(old_battle_state, actions, registry, rng);
 
 	let finished: bool;
-	let reward = match next_state.outcome() {
-		Some(Outcome::Side0Wins) => {
+	let reward = match step_request {
+		StepRequest::Finished(Outcome::Side0Wins) => {
 			finished = true;
 			1.0
 		},
-		Some(Outcome::Side1Wins) => {
+		StepRequest::Finished(Outcome::Side1Wins) => {
 			finished = true;
 			-1.0
 		}
-		Some(Outcome::Draw) => {
+		StepRequest => {
 			finished = true;
 			0.0
 		},
@@ -26,5 +26,5 @@ pub fn step(battle_state: BattleState, actions: Vec<Command>, registry: &Registr
 			0.0
 		}
 	};
-	return (next_state, reward, finished);
-}
+	return (battle_state, reward, finished);
+} */

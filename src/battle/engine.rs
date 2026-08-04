@@ -79,12 +79,12 @@ fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &B
 	}
 }
 
-fn handle_damage_event(amount: u32, target: PositionId, battle_state: &mut BattleState) {
+fn handle_damage_event(amount: u32, target: PositionId, battle_state: &mut BattleState) -> Option<PositionId> {
 	let target_state: &mut PokemonState = battle_state.get_mut_mon(target).unwrap();
-	//println!("Dealing {} damage to {} hp", amount, target_state.current_hp);
 	target_state.current_hp = target_state.current_hp.saturating_sub(amount);
-	if target_state.current_hp == 0 {
-		battle_state.switch_needed.push(target);
+	match target_state.current_hp {
+		0 => Some(target),
+		_ => None
 	}
 }
 
@@ -99,17 +99,20 @@ pub enum StepRequest {
 }
 
 pub struct StepResult {
-	battle_state: BattleState,
-	step_request: StepRequest,
+	pub battle_state: BattleState,
+	pub step_request: StepRequest,
 }
 
 pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> StepResult {
 	let mut commands: Vec<Command> = commands.clone();
 	let mut events: Vec<Event> = Vec::new();
+	let mut fainted: Vec<PositionId> = vec![];
 	loop {
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
-				handle_damage_event(amount, target, &mut battle_state)
+				if let Some(pos) = handle_damage_event(amount, target, &mut battle_state) {
+					fainted.push(pos);
+				}
 			}
 
 			Some(Event::Switch { current, new }) => {
@@ -129,7 +132,20 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 			}
 		}
 	}
-	battle_state
+	let step_request =
+		if fainted.is_empty() {
+			if let Some(outcome) = battle_state.outcome() {
+				StepRequest::Finished(outcome)
+			} else {
+				StepRequest::NeedsActions
+			}
+		} else {
+			StepRequest::NeedsReplacements(fainted)
+		};
+	StepResult {
+		battle_state,
+		step_request
+	}
 }
 
 fn calculate_damage(attack_stat: u32, defense_stat: u32, base_power: u32) -> u32 {
@@ -183,6 +199,18 @@ mod tests {
 		}
 	}
 
+	fn big_damage_attack() -> PMove {
+		PMove {
+			name: String::from("big_damage"),
+			move_id: MoveId(2),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
+			base_power: 999999,
+			effects: vec![],
+			base_prio: 0,
+		}
+	}
+
 	fn tackle() -> PMove {
 		PMove {
 			name: String::from("tackle"),
@@ -210,7 +238,7 @@ mod tests {
 	fn test_registry() -> Registry {
 		Registry {
 			pokemon: vec![frail_attacker(), fat_defender()],
-			moves: vec![tackle(), quick_attack()],
+			moves: vec![tackle(), quick_attack(), big_damage_attack()],
 		}
 	}
 
@@ -260,7 +288,7 @@ mod tests {
 		let battle_state = test_battle_state();
 		let fat_hp = battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
-		let next_battle_state = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng);
+		let next_battle_state = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng).battle_state;
 		let fat_hp_after = next_battle_state.get_mon(PositionId(1)).unwrap().current_hp;
 
 		let tackle_power = tackle().base_power;
@@ -316,7 +344,7 @@ mod tests {
 			targets: vec![PositionId(1)]
 		});
 
-		let new_state = step(battle_state, vec![command1], &registry, &mut rng);
+		let new_state = step(battle_state, vec![command1], &registry, &mut rng).battle_state;
 
 		println!("{:?}", new_state);
 	}
@@ -347,7 +375,7 @@ mod tests {
 			current: PositionId(0),
 			new: RosterId(2),
 		};
-		let next = step(battle_state, vec![switch], &registry, &mut rng);
+		let next = step(battle_state, vec![switch], &registry, &mut rng).battle_state;
 
 		// the active mon at position 0 is now the fat_defender (species 1)
 		assert_eq!(next.get_mon(PositionId(0)).unwrap().species_id.0, 1);
@@ -355,5 +383,19 @@ mod tests {
 		assert_eq!(next.field[PositionId(0)], RosterId(2));
 		// and the switched-OUT mon still exists in the roster (data preserved, not moved)
 		assert_eq!(next.roster.get_mon(RosterId(0)).as_ref().unwrap().species_id.0, 0);
+	}
+
+	#[test]
+	fn requests_replacement_when_mon_faints() {
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 0;
+		let attack_command = Command::MoveAction(MoveCommand {
+			move_id: MoveId(2),
+			targets: vec![PositionId(1)],
+			user: PositionId(0),
+		});
+		let step_request = step(battle_state, vec![attack_command], &test_registry(), &mut rng).step_request;
+		assert!(matches!(step_request, StepRequest::NeedsReplacements(_)));
 	}
 }

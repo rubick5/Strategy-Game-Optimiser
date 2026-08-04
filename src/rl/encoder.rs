@@ -9,9 +9,11 @@ const MON_COUNT: usize = TEAM_SIZE + TEAM_SIZE;
 
 const MON_ENCODING_LEN: usize = 7;
 
-pub const TOTAL_ENCODING_LEN: usize = MON_COUNT * MON_ENCODING_LEN;
+const FIELD_ENCODING_LEN: usize = 1;
 
-pub fn encode(battle_state: &BattleState, registry: &Registry) -> Vec<f32> {
+pub const TOTAL_ENCODING_LEN: usize = MON_COUNT * MON_ENCODING_LEN + FIELD_ENCODING_LEN;
+
+pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool) -> Vec<f32> {
 	let field_mons = battle_state.field.all_field_mons();
 	let front: Vec<usize> = field_mons.iter().map(|x| x.0).collect();
 	// all this does is put all the field mons first in the weights before
@@ -19,13 +21,13 @@ pub fn encode(battle_state: &BattleState, registry: &Registry) -> Vec<f32> {
 	let ordered = front.iter().copied()
 		.chain((0..MON_COUNT).filter(|x| !front.contains(x)));
 
-	let y: Vec<f32> = ordered
+	let mut y: Vec<f32> = ordered
 		.flat_map(|rid| {
 			let mon = battle_state.roster.get_mon(RosterId(rid)).as_ref();
 			encode_mon(mon, registry)
 		})
 		.collect();
-
+	y.push(replacement as u32 as f32);
 	assert!(y.len() == TOTAL_ENCODING_LEN);
 	y
 }
