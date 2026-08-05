@@ -133,12 +133,10 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 		}
 	}
 	let step_request =
-		if fainted.is_empty() {
-			if let Some(outcome) = battle_state.outcome() {
-				StepRequest::Finished(outcome)
-			} else {
-				StepRequest::NeedsActions
-			}
+		if let Some(outcome) = battle_state.outcome() {
+			StepRequest::Finished(outcome)
+		} else if fainted.is_empty() {
+			StepRequest::NeedsActions
 		} else {
 			StepRequest::NeedsReplacements(fainted)
 		};
