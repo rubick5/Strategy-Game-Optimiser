@@ -17,6 +17,8 @@ pub const RELU_LEAK: f32 = 0.01;
 
 pub const MOVESLOT_COUNT: usize = 4;
 
+pub const ENTROPY_REWARD_RATE: f32 = 0.05;
+
 pub const BASELINE_LEARNING_RATE: f32 = 0.01;
 
 #[derive(Debug)]
@@ -190,9 +192,17 @@ impl BotAgent
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
 
 		let move_chosen_index = move_slot.to_number();
+		let prob_entropy: f32 = last_probabilities.iter().filter(|p| **p != 0.0).map(|p| {
+			- p * p.ln()
+		}).sum();
 		let current_errors: Vec<f32> = (0..last_probabilities.len()).map ( |index| {
 			let indicator = if index == move_chosen_index { 1.0 } else { 0.0 };
-			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator)
+			let entropy_reward = if last_probabilities[index] == 0.0 {
+				0.0
+			} else {
+				ENTROPY_REWARD_RATE * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
+			};
+			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator) + entropy_reward
 		}).collect();
 
 		self.net.backward(current_errors, &encoding)
