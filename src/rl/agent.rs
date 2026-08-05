@@ -144,13 +144,13 @@ fn softmax_then_select(logits: &[f32], rng: &mut impl Rng) -> usize {
 }
 
 #[derive(Debug, Clone)]
-pub struct Agent
+pub struct BotAgent
 {
 	pub net: NeuralNet<fn(f32) -> f32>,
 	pub baseline: f32,
 }
 
-impl Agent
+impl BotAgent
 {
 	/**
 	 * Runs the encoding through the network then applies the mask to the logits.
@@ -176,7 +176,7 @@ impl Agent
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
 		let relu = |x: f32| if x < 0.0 { RELU_LEAK * x } else { x };
 		let relu_prime = |x: f32| if x < 0.0 { RELU_LEAK } else { 1.0 };
-		Agent {
+		BotAgent {
 			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),
 			baseline: 0.0,
 		}
