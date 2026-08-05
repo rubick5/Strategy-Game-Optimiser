@@ -22,7 +22,7 @@ impl Registry {
 	pub fn load() -> Self {
 		let frail_attacker = SpeciesData {
 			name: String::from("frail_attacker"),
-			base_hp: 80,
+			base_hp: 85,
 			species_id: SpeciesId(0),
 			attack: 100,
 			defense: 100,
