@@ -65,8 +65,9 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 	let mut opponent: BotAgent;
 	let mut current_batch: Vec<(f32, Vec<Step>)> = Vec::new();
 	for batch_num in 0..BATCH_COUNT {
+		opponent = agent.clone();
 		for _ in 0..BATCH_SIZE {
-			opponent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
+			//opponent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 			let battle: BattleState = start_battle_state(&registry);
 
 			let (battle_reward, actions_and_states) = play_out_battle(battle, &registry, &mut agent, &mut opponent, rng);
