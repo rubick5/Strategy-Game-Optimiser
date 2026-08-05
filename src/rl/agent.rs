@@ -19,9 +19,9 @@ pub const MOVESLOT_COUNT: usize = 4;
 
 pub const ENTROPY_REWARD_RATE: f32 = 0.01;
 
-pub const BASELINE_LEARNING_RATE: f32 = 0.01;
+pub const BASELINE_LEARNING_RATE: f32 = 0.05;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Moveslot {
 	Slot(usize),
 	Switch(usize)
