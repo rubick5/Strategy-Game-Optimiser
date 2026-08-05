@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::{battle::{command::Command, engine::{self, StepRequest, StepResult}, state::{BattleState, Outcome, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, BASELINE_LEARNING_RATE, Moveslot}, encoder, env, mask::Mask}};
+use crate::{battle::{command::Command, engine::{self, StepRequest, StepResult}, state::{BattleState, Outcome, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{BotAgent, BASELINE_LEARNING_RATE, Moveslot}, encoder, env, mask::Mask}};
 use crate::battle::state::Team;
 
 const DAMPING_CONSTANT: f32 = 0.95;
@@ -56,17 +56,17 @@ struct Step {
 
 pub fn main_loop(mut rng: &mut impl Rng) {
 	let registry = Registry::load();
-	let mut agent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
+	let mut agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 	let mut battles_won = 0;
 
 
-	let mut best_agent: Agent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
+	let mut best_agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 	let mut max_battles_won: i32 = 0;
-	let mut opponent: Agent;
+	let mut opponent: BotAgent;
 	let mut current_batch: Vec<(f32, Vec<Step>)> = Vec::new();
 	for batch_num in 0..BATCH_COUNT {
 		for _ in 0..BATCH_SIZE {
-			opponent = Agent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
+			opponent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 			let battle: BattleState = start_battle_state(&registry);
 
 			let (battle_reward, actions_and_states) = play_out_battle(battle, &registry, &mut agent, &mut opponent, rng);
@@ -94,7 +94,7 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 	final_agent_checks(best_agent, &registry, rng);
 }
 
-fn final_agent_checks(mut agent: Agent, registry: &Registry, rng: &mut impl Rng) {
+fn final_agent_checks(mut agent: BotAgent, registry: &Registry, rng: &mut impl Rng) {
 	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &start_battle_state(registry));
 	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp(registry));
 	
@@ -107,7 +107,7 @@ fn final_agent_checks(mut agent: Agent, registry: &Registry, rng: &mut impl Rng)
 /**
  * Returns the battle reward for playing out the battle, plus the actions and states that took place
  */
-fn play_out_battle(mut battle: BattleState, registry: &Registry, agent: &mut Agent, opponent: &mut Agent, rng: &mut impl Rng) -> (f32, Vec<Step>) {
+fn play_out_battle(mut battle: BattleState, registry: &Registry, agent: &mut BotAgent, opponent: &mut BotAgent, rng: &mut impl Rng) -> (f32, Vec<Step>) {
 	
 	let mut actions_and_states: Vec<Step> = Vec::new();
 	let mut turn_count = 0;
@@ -162,7 +162,7 @@ fn play_out_battle(mut battle: BattleState, registry: &Registry, agent: &mut Age
 	(0.0, vec![])
 }
 
-fn learn_from_battle(agent: &mut Agent, battle_reward: f32, steps: Vec<Step>) {
+fn learn_from_battle(agent: &mut BotAgent, battle_reward: f32, steps: Vec<Step>) {
 	let mut gt = 1.0;
 	agent.baseline += (battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
 	for Step { encoding, move_chosen, probabilities } in steps {
