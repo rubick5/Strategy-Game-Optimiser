@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::{battle::{state::{BattleState, PokemonState, PositionId}}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{Step, play_out_battle}, encoder, learner::learn_from_battle, mask::Mask}};
+use crate::{battle::state::{BattleState, PokemonState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::{learn_from_batch}, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;
@@ -44,7 +44,7 @@ pub fn battle_state_1hp(registry: &Registry) -> BattleState {
 	let ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
-	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
+	BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1])
 }
 
 
@@ -58,19 +58,19 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 	let mut best_agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 	let mut max_battles_won: i32 = 0;
 	let mut opponent: BotAgent;
-	let mut current_batch: Vec<(f32, Vec<Step>)> = Vec::new();
 	for batch_num in 0..BATCH_COUNT {
+		let mut current_batch: Vec<PlayedBattle> = Vec::new();
 		opponent = agent.clone();
 		for _ in 0..BATCH_SIZE {
 			//opponent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 			let battle: BattleState = start_battle_state(&registry);
 
-			let (battle_reward, actions_and_states) = play_out_battle(battle, &registry, &mut agent, &mut opponent, rng);
+			let played_battle = play_out_battle(battle, &registry, &mut agent, &mut opponent, rng);
 			
-			if battle_reward == 1.0 {
+			if played_battle.battle_reward > 0.0 {
 				battles_won += 1;
 			}
-			current_batch.push((battle_reward, actions_and_states));
+			current_batch.push(played_battle);
 		}
 		if batch_num % BATCH_PRINT_FREQ == 0 {
 			println!("batch {}: battles won: {} out of {}", batch_num, battles_won, BATCH_PRINT_GAP_SIZE);
@@ -80,9 +80,7 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 			}
 			battles_won = 0;
 		}
-		while let Some((battle_reward, steps)) = current_batch.pop() {
-			learn_from_battle(&mut agent, battle_reward, steps);
-		}
+		learn_from_batch(&mut agent, &current_batch, 1.0);
 	}
 	println!("final state of agent:");
 	final_agent_checks(agent, &registry);

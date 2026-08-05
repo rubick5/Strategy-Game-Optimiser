@@ -22,6 +22,11 @@ pub struct Step {
 	pub probabilities: Vec<f32>,
 }
 
+pub struct PlayedBattle {
+	pub steps: Vec<Step>,
+	pub battle_reward: f32,
+}
+
 /**
  * Returns the battle reward for playing out the battle, plus the actions and states that took place
  */
@@ -31,7 +36,7 @@ pub fn play_out_battle(
 	agent: &mut BotAgent,
 	opponent: &mut BotAgent,
 	rng: &mut impl Rng,
-) -> (f32, Vec<Step>) {
+) -> PlayedBattle {
 	let mut actions_and_states: Vec<Step> = Vec::new();
 	let mut turn_count = 0;
 	let mut step_request = StepRequest::NeedsActions;
@@ -82,15 +87,15 @@ pub fn play_out_battle(
 				} = engine::step(battle, commands, registry, rng);
 			}
 			engine::StepRequest::Finished(Outcome::Side0Wins) => {
-				return (1.0, actions_and_states);
+				return PlayedBattle { steps: actions_and_states, battle_reward: 1.0 };
 			}
 			engine::StepRequest::Finished(Outcome::Side1Wins) => {
-				return (-1.0, actions_and_states);
+				return PlayedBattle { steps: actions_and_states, battle_reward: -1.0 };
 			}
 			engine::StepRequest::Finished(Outcome::Draw) => {
-				return (0.0, actions_and_states);
+				return PlayedBattle { steps: actions_and_states, battle_reward: 0.0 };
 			}
 		}
 	}
-	(0.0, vec![])
+	PlayedBattle { steps: vec![], battle_reward: 0.0 }
 }
