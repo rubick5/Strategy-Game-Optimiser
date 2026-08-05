@@ -3,7 +3,7 @@ use rand::{Rng, seq::IteratorRandom};
 use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::agent::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
 
 pub struct Mask {
-	allowed: [bool; MAX_DECISION]
+	pub allowed: [bool; MAX_DECISION]
 }
 
 impl Mask {
@@ -39,7 +39,7 @@ impl Mask {
 		assert!(pre_softmax.len() == MAX_DECISION);
 		for (index, allowed) in self.allowed.iter().enumerate() {
 			if !allowed {
-				pre_softmax[index] = -1e9;
+				pre_softmax[index] = f32::NEG_INFINITY;
 			}
 		}
 	}

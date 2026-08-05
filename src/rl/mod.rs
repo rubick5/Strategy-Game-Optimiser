@@ -4,3 +4,5 @@ pub mod env;
 pub mod agent;
 pub mod neural_net;
 pub mod mask;
+pub mod learner;
+pub mod battle_playout;
