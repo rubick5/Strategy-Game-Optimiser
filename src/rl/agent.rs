@@ -17,7 +17,7 @@ pub const RELU_LEAK: f32 = 0.01;
 
 pub const MOVESLOT_COUNT: usize = 4;
 
-pub const ENTROPY_REWARD_RATE: f32 = 0.05;
+pub const ENTROPY_REWARD_RATE: f32 = 0.01;
 
 pub const BASELINE_LEARNING_RATE: f32 = 0.01;
 
@@ -137,6 +137,9 @@ fn softmax_then_select(logits: &[f32], rng: &mut impl Rng) -> usize {
 	let random_selection = rng.random();
 	let mut counter = 0.0;
 	for (index, prob) in probabilities.into_iter().enumerate() {
+		if prob <= 0.0 {
+			continue;
+		}
 		counter += prob;
 		if counter >= random_selection {
 			return index;
@@ -154,6 +157,12 @@ pub struct BotAgent
 
 impl BotAgent
 {
+
+	pub fn just_logits(&mut self, representation: &[f32], mask: &Mask) -> Vec<f32> {
+		let mut output = self.net.forward(representation);
+		mask.apply(&mut output);
+		output
+	}
 	/**
 	 * Runs the encoding through the network then applies the mask to the logits.
 	 *
@@ -164,8 +173,15 @@ impl BotAgent
 		let mut logits = self.net.forward(representation);
 		mask.apply(&mut logits); // edits them in place, remember
 
-		(Moveslot::from_number(softmax_then_select(&logits, rng)), softmax(&logits))
+		let index_selected = softmax_then_select(&logits, rng);
+		assert!(mask.allowed[index_selected],
+			"illegal action selected!\n  index: {}\n  allowed: {:?}\n  probs: {:?}\n  logits: {:?}",
+			index_selected,
+			mask.allowed,
+			softmax(&logits),
+			logits,);
 
+		(Moveslot::from_number(index_selected), softmax(&logits))
 	}
 
 	/**
