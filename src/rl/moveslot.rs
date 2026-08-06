@@ -47,12 +47,6 @@ impl Moveslot {
 	 * This will need significant changes later as we add different types of moves
 	 */
 	pub fn to_command(&self, user: PositionId, battle_state: &BattleState) -> Command {
-		// get the right pokemon
-		// choose the right moveslot / switch
-		// make and return the command
-		// handle targetings
-		// all moves target something
-		
 		// for now, if we are pos 0 we target 1 and if pos 1 we target 0:
 		let target = match user {
 			PositionId(0) => PositionId(1),

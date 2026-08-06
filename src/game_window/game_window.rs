@@ -32,14 +32,14 @@ impl eframe::App for BattleApp {
 
 impl BattleApp {
 
-	fn display_pokemon_state(&self, ps: &CreatureState) -> String {
-		let species_data = self.registry.get_pokemon(ps.species_id);
+	fn display_creature_state(&self, ps: &CreatureState) -> String {
+		let species_data = self.registry.get_species_data(ps.species_id);
 		format!("{}: HP {} out of {}", species_data.name, ps.current_hp, species_data.base_hp)
 	}
 	fn display_team(&self, team: &Team, ui: &mut egui::Ui) {
 		for m in self.battle.field.team(team) {
 			let ps = self.battle.roster.get_mon(*m).unwrap();
-			ui.strong(self.display_pokemon_state(&ps));
+			ui.strong(self.display_creature_state(&ps));
 		}	
 	}
 	fn show_battle_state(&self, ui: &mut egui::Ui) {
@@ -81,7 +81,7 @@ impl BattleApp {
 			}
 			Moveslot::Switch(n) => {
 				if let Some(target) = self.battle.get_mon_from_team(&self.player_team, n) {
-					self.registry.get_pokemon(target.species_id).name.clone()
+					self.registry.get_species_data(target.species_id).name.clone()
 				} else {
 					String::from("nobody")
 				}

@@ -1,12 +1,12 @@
 use crate::model::pmove::MoveTargeting;
 use crate::model::pmove::MoveType;
-use crate::model::speciesdata::SpeciesData;
+use crate::model::speciesdata::SpeciesDatum;
 use crate::model::speciesdata::SpeciesId;
 use crate::model::pmove::PMove;
 use crate::model::pmove::MoveId;
 
 pub struct Registry {
-	pub pokemon: Vec<SpeciesData>,
+	pub species_data: Vec<SpeciesDatum>,
 	pub moves: Vec<PMove>,
 }
 
@@ -15,12 +15,12 @@ impl Registry {
 		self.moves.get(move_id.0 as usize).unwrap()
 	}
 
-	pub fn get_pokemon(&self, species_id: SpeciesId) -> &SpeciesData {
-		self.pokemon.get(species_id.0 as usize).unwrap()
+	pub fn get_species_data(&self, species_id: SpeciesId) -> &SpeciesDatum {
+		self.species_data.get(species_id.0 as usize).unwrap()
 	}
 
 	pub fn load() -> Self {
-		let frail_attacker = SpeciesData {
+		let frail_attacker = SpeciesDatum {
 			name: String::from("frail_attacker"),
 			base_hp: 85,
 			species_id: SpeciesId(0),
@@ -29,7 +29,7 @@ impl Registry {
 			speed: 90,
 		};
 	
-		let fat_defender = SpeciesData {
+		let fat_defender = SpeciesDatum {
 			name: String::from("fat_defender"),
 			base_hp: 120,
 			species_id: SpeciesId(1),
@@ -59,7 +59,7 @@ impl Registry {
 		};
 
 		Registry {
-			pokemon: vec![frail_attacker, fat_defender],
+			species_data: vec![frail_attacker, fat_defender],
 			moves: vec![tackle, quick_attack],
 		}
 	}
