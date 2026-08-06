@@ -7,7 +7,7 @@ use crate::battle::state::CreatureState;
 use crate::model::pmove::MoveId;
 use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
-use crate::model::speciesdata::{SpeciesData, Stat};
+use crate::model::speciesdata::{SpeciesDatum, Stat};
 
 const SWITCHING_PRIO: i8 = 9;
 const MIN_PRIORITY: i8 = -7;
@@ -158,8 +158,8 @@ pub fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: Pos
 	println!("{} used {} on {}", user_name, move_name, target_name);
 }
 
-fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesData {
-	registry.get_pokemon(battle_state.get_mon(pos).unwrap().species_id).clone()
+fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: PositionId) -> SpeciesDatum {
+	registry.get_species_data(battle_state.get_mon(pos).unwrap().species_id).clone()
 }
 
 /********************************
@@ -175,8 +175,8 @@ mod tests {
 	// registry for more independent testing...
 	use super::*;
 
-	fn frail_attacker() -> SpeciesData {
-		SpeciesData {
+	fn frail_attacker() -> SpeciesDatum {
+		SpeciesDatum {
 			name: String::from("frail_attacker"),
 			base_hp: 80,
 			species_id: SpeciesId(0),
@@ -186,8 +186,8 @@ mod tests {
 		}
 	}
 
-	fn fat_defender() -> SpeciesData {
-		SpeciesData {
+	fn fat_defender() -> SpeciesDatum {
+		SpeciesDatum {
 			name: String::from("fat_defender"),
 			base_hp: 120,
 			species_id: SpeciesId(1),
@@ -235,7 +235,7 @@ mod tests {
 
 	fn test_registry() -> Registry {
 		Registry {
-			pokemon: vec![frail_attacker(), fat_defender()],
+			species_data: vec![frail_attacker(), fat_defender()],
 			moves: vec![tackle(), quick_attack(), big_damage_attack()],
 		}
 	}

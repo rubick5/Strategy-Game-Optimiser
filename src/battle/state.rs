@@ -1,5 +1,5 @@
 use crate::model::pmove::MoveId;
-use crate::model::speciesdata::{SpeciesData, SpeciesId};
+use crate::model::speciesdata::{SpeciesDatum, SpeciesId};
 use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
 use std::fmt::Display;
@@ -133,20 +133,7 @@ impl Roster {
 			Team::One => self.mons.iter().skip(1).step_by(2).collect()
 		}
 	}
-	/*
-	pub fn get(&self, pos: PositionId) -> Option<&PokemonState> {
-		self.mons[pos.0 as usize].as_ref()
-	}
-
-	pub fn get_mut(&mut self, pos: PositionId) -> Option<&mut PokemonState> {
-		self.mons.get_mut(pos.0 as usize)?.as_mut()
-	}
-
-	pub fn iter(&self) -> impl Iterator<Item = (PositionId, &PokemonState)> + '_ {
-		self.mons.iter().enumerate().filter_map(|(i, slot)| {
-			slot.as_ref().map(|mon| (PositionId(i as u32), mon))
-		})
-	} */
+	
 	pub fn all_mons(&self) -> impl Iterator<Item = Option<&CreatureState>> + '_ {
 		self.mons.iter().map(|slot| slot.as_ref())
 	}
@@ -219,7 +206,7 @@ pub struct CreatureState {
 }
 
 impl CreatureState {
-	pub fn from_species_data(species_data: SpeciesData, moves: Vec<MoveId>) -> Self {
+	pub fn from_species_data(species_data: SpeciesDatum, moves: Vec<MoveId>) -> Self {
 		CreatureState {
 			species_id: species_data.species_id,
 			stat_changes: StatStages::new(),
@@ -228,16 +215,16 @@ impl CreatureState {
 		}
 	}
 	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {
-		let pokemon = registry.get_pokemon(species_id);
+		let species_datum = registry.get_species_data(species_id);
 		CreatureState {
 			species_id,
 			stat_changes: StatStages::new(),
-			current_hp: pokemon.base_hp as u32,
+			current_hp: species_datum.base_hp as u32,
 			moves,
 		}
 	}
 	pub fn get_stat(&self, stat: Stat, registry: &Registry) -> u32 {
-		let species_data = registry.get_pokemon(self.species_id);
+		let species_data = registry.get_species_data(self.species_id);
 		match stat {
 			Stat::Attack => {
 				

@@ -4,7 +4,7 @@
 pub struct SpeciesId(pub u32);
 
 #[derive(Clone)]
-pub struct SpeciesData {
+pub struct SpeciesDatum {
 	pub name: String,
 	pub species_id: SpeciesId,
 	pub base_hp: u8,
