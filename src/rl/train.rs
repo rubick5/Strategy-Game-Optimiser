@@ -36,12 +36,12 @@ pub fn start_battle_state(registry: &Registry) -> BattleState {
 
 pub fn battle_state_1hp(registry: &Registry) -> BattleState {
 	let ps0 = PokemonState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let ps01 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let ps11 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let _ps01 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let _ps11 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let _ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1])
@@ -83,12 +83,15 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 		learn_from_batch(&mut agent, &current_batch, 1.0);
 	}
 	println!("final state of agent:");
-	final_agent_checks(agent, &registry);
+	final_agent_checks(&mut agent, &registry);
 	println!("highest winrate agent:");
-	final_agent_checks(best_agent, &registry);
+	final_agent_checks(&mut best_agent, &registry);
+
+	println!("Saving final agent to file: agent.json...");
+	agent.to_file("agent.json").unwrap() // goofy unwrap
 }
 
-fn final_agent_checks(mut agent: BotAgent, registry: &Registry) {
+fn final_agent_checks(agent: &mut BotAgent, registry: &Registry) {
 	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &start_battle_state(registry));
 	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp(registry));
 	

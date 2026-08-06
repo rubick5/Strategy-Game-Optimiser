@@ -10,9 +10,10 @@ use crate::{
 	},
 	model::registry::Registry,
 	rl::{
-		agent::{BotAgent, Moveslot},
+		agent::BotAgent,
 		encoder,
 		mask::Mask,
+		moveslot::Moveslot,
 	},
 };
 

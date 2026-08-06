@@ -5,10 +5,10 @@
 // * versatile. Also note that we can reduce the weight of this as we get further into training
 // * once the correct strategies have actually been figured out.
 
-use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}}, rl::{mask::Mask, neural_net::NeuralNet}};
+use crate::{battle::state::TEAM_SIZE, rl::{mask::Mask, moveslot::Moveslot, neural_net::NeuralNet}};
 use rand::Rng;
 
-use std::f32::consts::E;
+use std::{error::Error, f32::consts::E};
 
 // max moveslot discriminant
 pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
@@ -21,89 +21,7 @@ pub const ENTROPY_REWARD_RATE: f32 = 0.01;
 
 pub const BASELINE_LEARNING_RATE: f32 = 0.05;
 
-#[derive(Debug, Copy, Clone)]
-pub enum Moveslot {
-	Slot(usize),
-	Switch(usize)
-}
-use Moveslot::*;
 
-impl Moveslot {
-	/**
-	 * Creates a moveslot from a number
-
-	 * Great for using indexes of probability vectors
-	 */
-	pub fn from_number(n: usize) -> Self {
-		match n {
-			n if n < 4 => Slot(n),
-			n if n <= 9 => Switch(n - 4),
-			_ => panic!("INVALID MOVESLOT SELECTED")
-		}
-	}
-
-	/**
-	 * Translates a moveslot back into a number
-
-	 * Inverse of from_number function
-	 */
-	pub fn to_number(&self) -> usize {
-		match self {
-			Switch(n) => n + 4,
-			Slot(n) => *n,
-		}
-	}
-
-	/**
-	 * Uses the context provided by the battlestate and who is using the move to translate
-	 * itself (a moveslot) into an engine-approved command.
-
-	 * This will need significant changes later as we add different types of moves
-	 */
-	pub fn to_command(&self, user: PositionId, battle_state: &BattleState) -> Command {
-		// get the right pokemon
-		// choose the right moveslot / switch
-		// make and return the command
-		// handle targetings
-		// all moves target something
-		
-		// for now, if we are pos 0 we target 1 and if pos 1 we target 0:
-		let target = match user {
-			PositionId(0) => PositionId(1),
-			PositionId(1) => PositionId(0),
-			_ => panic!("someone tried to use a move, but they don't exist!")
-		};
-		let team = user.team();
-
-		match self {
-			Switch(n) => {
-				let new: RosterId = RosterId(
-					n * 2 + (if team == Team::One { 1 } else { 0 })
-				);
-				Command::Switch {
-					current: user,
-					new,
-				}
-			},
-			Slot(n) => {
-				let mon = battle_state.get_mon(user).unwrap();
-				if *n > 1 {
-					println!("n: {}", n);
-					println!("mon: {:?}", mon);
-				}
-
-				let move_id = mon.moves[*n];
-				Command::MoveAction(
-					MoveCommand {
-						move_id,
-						user,
-						targets: vec![target],
-					}
-				)
-			}
-		}
-	}
-}
 
 /**
  * Computes the softmax of the logits given
@@ -116,6 +34,13 @@ fn softmax(logits: &[f32]) -> Vec<f32> {
 	logits.iter().map(|x| E.powf(*x - m) / divisor).collect()
 }
 
+pub fn relu(x: f32) -> f32 {
+	if x < 0.0 { RELU_LEAK * x } else { x }
+}
+
+pub fn relu_prime(x: f32) -> f32 {
+	if x < 0.0 { RELU_LEAK } else { 1.0 }
+}
 /**
  * Finds the largest element in a slice of f32s
  * 
@@ -157,6 +82,23 @@ pub struct BotAgent
 
 impl BotAgent
 {
+	pub fn relu_from_file(file_name: &str) -> Result<Self, Box<dyn Error>> {
+		Self::from_file(file_name, relu, relu_prime)
+	}
+
+	pub fn from_file(file_name: &str, hidden_activation: fn(f32) -> f32, hidden_activation_prime: fn(f32) -> f32) -> Result<Self, Box<dyn Error>> {
+		let net_from_file = 
+			NeuralNet::from_file(file_name, hidden_activation, hidden_activation_prime)?;
+		Ok(Self {
+			net: net_from_file,
+			baseline: 0.0,
+		})	
+	}
+
+	pub fn to_file(&self, file_name: &str) -> Result<(), Box<dyn Error>> {
+		self.net.to_file(file_name)
+	}
+
 
 	pub fn just_logits(&mut self, representation: &[f32], mask: &Mask) -> Vec<f32> {
 		let mut output = self.net.forward(representation);
@@ -192,8 +134,6 @@ impl BotAgent
 	 */
 	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
-		let relu = |x: f32| if x < 0.0 { RELU_LEAK * x } else { x };
-		let relu_prime = |x: f32| if x < 0.0 { RELU_LEAK } else { 1.0 };
 		BotAgent {
 			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),
 			baseline: 0.0,

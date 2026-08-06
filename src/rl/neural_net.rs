@@ -1,8 +1,29 @@
 use rand::Rng;
 use rand_distr::Normal;
+use serde::{Serialize, Deserialize};
+use std::{error::Error, fs::File, io::Write};
 
 const LEARNING_RATE: f32 = 0.0005;
 const CLIP: f32 = 0.1;
+
+#[derive(Serialize, Deserialize)]
+pub struct SavedNeuralNet {
+	pub layers: Vec<NeuronLayer>,
+}
+
+impl SavedNeuralNet {
+	pub fn from_file(file_name: &str) -> Result<Self, Box<dyn Error>> {
+		let bytes = std::fs::read(file_name)?;
+		let saved: SavedNeuralNet = serde_json::from_slice(&bytes)?;
+		Ok(saved)
+	}
+
+	pub fn to_file(&self, target: &str) -> Result<(), Box<dyn Error>> {
+		let bytes = serde_json::to_string(&self)?;
+		let mut file = File::create(target)?;
+		Ok(file.write_all(bytes.as_bytes())?)
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct NeuralNet<F>
@@ -21,6 +42,26 @@ impl<F> NeuralNet<F>
 where
 	F: Fn(f32) -> f32,
 {
+	pub fn to_file(&self, target: &str) -> Result<(), Box<dyn Error>> {
+		self.to_saved().to_file(target)
+	}
+
+	pub fn from_file(file_name: &str, hidden_activation: F, hidden_activation_prime: F) -> Result<Self, Box<dyn Error>> {
+		let saved = SavedNeuralNet::from_file(file_name)?;
+		Ok(Self::from_saved(saved, hidden_activation, hidden_activation_prime))
+	}
+
+	pub fn to_saved(&self) -> SavedNeuralNet {
+		SavedNeuralNet { layers: self.layers.clone().into_iter().map(|(l, _)| l).collect() }
+	}
+
+	pub fn from_saved(saved: SavedNeuralNet, hidden_activation: F, hidden_activation_prime: F) -> Self {
+		Self {
+			layers: saved.layers.into_iter().map(|l| (l, vec![])).collect(),
+			hidden_activation,
+			hidden_activation_prime,
+		}
+	}
 	pub fn gen_random(rng: &mut impl Rng, layer_sizes: &[usize], hidden_activation: F, hidden_activation_prime: F) -> Self {
 		Self {
 			layers: (0..layer_sizes.len()-1).map(|n| (NeuronLayer::gen_random(rng, layer_sizes[n], layer_sizes[n+1]), vec![])).collect(),
@@ -70,7 +111,7 @@ where
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeuronLayer {
 	most_recent_input: Vec<f32>,
 	most_recent_output: Vec<f32>,
@@ -110,7 +151,7 @@ impl NeuronLayer {
 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Neuron {
 	pub weights: Vec<f32>,
 	pub bias: f32,
