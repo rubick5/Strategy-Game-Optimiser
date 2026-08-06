@@ -92,8 +92,8 @@ pub fn main_loop(mut rng: &mut impl Rng) {
 }
 
 fn final_agent_checks(agent: &mut BotAgent, registry: &Registry) {
-	let agent_mask_normal = Mask::from_battle_state(Team::Zero, PositionId(0), &start_battle_state(registry));
-	let agent_mask_1hp = Mask::from_battle_state(Team::Zero, PositionId(0), &battle_state_1hp(registry));
+	let agent_mask_normal = Mask::from_battle_state(&Team::Zero, PositionId(0), &start_battle_state(registry));
+	let agent_mask_1hp = Mask::from_battle_state(&Team::Zero, PositionId(0), &battle_state_1hp(registry));
 	
 	//println!("agent normal: {:?}", agent.choose_move(&encoder::encode(&start_battle_state(registry), &registry, false), &agent_mask_normal, rng));
 	//println!("agent 1hp: {:?}", agent.choose_move(&encoder::encode(&battle_state_1hp(registry), &registry, false), &agent_mask_1hp, rng));

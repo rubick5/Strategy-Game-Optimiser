@@ -46,8 +46,8 @@ pub fn play_out_battle(
 
 		match step_request {
 			StepRequest::NeedsActions => {
-				let agent_mask = Mask::from_battle_state(Team::Zero, PositionId(0), &battle);
-				let opponent_mask = Mask::from_battle_state(Team::One, PositionId(1), &battle);
+				let agent_mask = Mask::from_battle_state(&Team::Zero, PositionId(0), &battle);
+				let opponent_mask = Mask::from_battle_state(&Team::One, PositionId(1), &battle);
 
 				let encoding = encoder::encode(&battle, registry, false);
 				let (mut agent_moveslot, probabilities) =
@@ -77,7 +77,7 @@ pub fn play_out_battle(
 					.iter()
 					.map(|pos| {
 						let encoding = encoder::encode(&battle, registry, true);
-						let mask = Mask::from_battle_state(pos.team(), *pos, &battle);
+						let mask = Mask::from_battle_state(&pos.team(), *pos, &battle);
 						let replacement = agent.choose_move(&encoding, &mask, rng);
 						replacement.0.to_command(*pos, &battle)
 					})
