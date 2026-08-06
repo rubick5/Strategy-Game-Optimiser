@@ -1,16 +1,16 @@
 use std::error::Error;
 
-use poke_sim::{battle::state::{BattleState, PokemonState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
+use poke_sim::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
-	let ps0 = PokemonState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let ps01 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let ps11 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
 }

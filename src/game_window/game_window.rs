@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::{battle::state::{BattleState, PokemonState, PositionId, Team}, model::registry::Registry, rl::{agent::BotAgent, mask::Mask, moveslot::Moveslot}};
+use crate::{battle::state::{BattleState, CreatureState, PositionId, Team}, model::registry::Registry, rl::{agent::BotAgent, mask::Mask, moveslot::Moveslot}};
 
 
 pub struct BattleApp {
@@ -32,7 +32,7 @@ impl eframe::App for BattleApp {
 
 impl BattleApp {
 
-	fn display_pokemon_state(&self, ps: &PokemonState) -> String {
+	fn display_pokemon_state(&self, ps: &CreatureState) -> String {
 		let species_data = self.registry.get_pokemon(ps.species_id);
 		format!("{}: HP {} out of {}", species_data.name, ps.current_hp, species_data.base_hp)
 	}

@@ -1,4 +1,4 @@
-use crate::{battle::state::{BattleState, PokemonState, RosterId, TEAM_SIZE}, model::{registry::Registry, speciesdata::Stat}};
+use crate::{battle::state::{BattleState, CreatureState, RosterId, TEAM_SIZE}, model::{registry::Registry, speciesdata::Stat}};
 
 const ATTACK_SCALAR: f32 = 200.0;
 const SPEED_SCALAR: f32 = 200.0;
@@ -32,7 +32,7 @@ pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool
 	y
 }
 
-fn encode_mon(op_mon: Option<&PokemonState>, registry: &Registry) -> Vec<f32> {
+fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 	match op_mon {
 		Some(mon) => {
 			let attack = mon.get_stat(Stat::Attack, registry) as f32;

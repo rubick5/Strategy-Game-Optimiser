@@ -94,20 +94,20 @@ pub struct RosterId(pub usize);
 
 #[derive(Debug, Clone)]
 pub struct Roster {
-	mons: Vec<Option<PokemonState>>,   // Option so an empty/fainted slot still exists
+	mons: Vec<Option<CreatureState>>,   // Option so an empty/fainted slot still exists
 }
 
 impl Roster {
 
-	pub fn get_mon(&self, rid: RosterId) -> Option<&PokemonState> {
+	pub fn get_mon(&self, rid: RosterId) -> Option<&CreatureState> {
 		self.mons[rid.0].as_ref()
 	}
-	pub fn get_mut_mon(&mut self, rid: RosterId) -> Option<&mut PokemonState> {
+	pub fn get_mut_mon(&mut self, rid: RosterId) -> Option<&mut CreatureState> {
 		self.mons[rid.0].as_mut()
 	}
 
-	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>) -> Self {
-		let mut mons: Vec<Option<PokemonState>> = vec![None; 2 * TEAM_SIZE];
+	pub fn from(team0: Vec<CreatureState>, team1: Vec<CreatureState>) -> Self {
+		let mut mons: Vec<Option<CreatureState>> = vec![None; 2 * TEAM_SIZE];
 		for i in 0..team0.len() {
 			let monstate = match team0.get(i) {
 				Some(mon) => Some(mon.clone()),
@@ -127,7 +127,7 @@ impl Roster {
 		}
 	}
 
-	pub fn team(&self, team: &Team) -> Vec<&Option<PokemonState>> {
+	pub fn team(&self, team: &Team) -> Vec<&Option<CreatureState>> {
 		match team {
 			Team::Zero => self.mons.iter().step_by(2).collect(),
 			Team::One => self.mons.iter().skip(1).step_by(2).collect()
@@ -147,7 +147,7 @@ impl Roster {
 			slot.as_ref().map(|mon| (PositionId(i as u32), mon))
 		})
 	} */
-	pub fn all_mons(&self) -> impl Iterator<Item = Option<&PokemonState>> + '_ {
+	pub fn all_mons(&self) -> impl Iterator<Item = Option<&CreatureState>> + '_ {
 		self.mons.iter().map(|slot| slot.as_ref())
 	}
 }
@@ -160,7 +160,7 @@ pub struct BattleState {
 }
 
 impl BattleState {
-	pub fn from(team0: Vec<PokemonState>, team1: Vec<PokemonState>, field: Vec<usize>) -> Self {
+	pub fn from(team0: Vec<CreatureState>, team1: Vec<CreatureState>, field: Vec<usize>) -> Self {
 		BattleState {
 			field: Field::from(field),
 			roster: Roster::from(team0, team1),
@@ -190,7 +190,7 @@ impl BattleState {
 		}
 	}
 
-	pub fn get_mon_from_team(&self, team: &Team, team_index: usize) -> Option<&PokemonState> {
+	pub fn get_mon_from_team(&self, team: &Team, team_index: usize) -> Option<&CreatureState> {
 		//self.roster.team(team).get(team_index).as_ref()?
 		let roster_id = match team {
 			Team::One => RosterId(1 + team_index * 2),
@@ -199,28 +199,28 @@ impl BattleState {
 		self.roster.get_mon(roster_id)
 	}
 
-	pub fn get_mon(&self, pos: PositionId) -> Option<&PokemonState> {
+	pub fn get_mon(&self, pos: PositionId) -> Option<&CreatureState> {
 		let index = self.field[pos];
 		self.roster.get_mon(index)
 	}
 
-	pub fn get_mut_mon(&mut self, pos: PositionId) -> Option<&mut PokemonState> {
+	pub fn get_mut_mon(&mut self, pos: PositionId) -> Option<&mut CreatureState> {
 		let index = self.field[pos];
 		self.roster.get_mut_mon(index)
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct PokemonState {
+pub struct CreatureState {
 	pub species_id: SpeciesId,
 	pub stat_changes: StatStages,
 	pub current_hp: u32,
 	pub moves: Vec<MoveId>,
 }
 
-impl PokemonState {
+impl CreatureState {
 	pub fn from_species_data(species_data: SpeciesData, moves: Vec<MoveId>) -> Self {
-		PokemonState {
+		CreatureState {
 			species_id: species_data.species_id,
 			stat_changes: StatStages::new(),
 			current_hp: species_data.base_hp as u32,
@@ -229,7 +229,7 @@ impl PokemonState {
 	}
 	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {
 		let pokemon = registry.get_pokemon(species_id);
-		PokemonState {
+		CreatureState {
 			species_id,
 			stat_changes: StatStages::new(),
 			current_hp: pokemon.base_hp as u32,
