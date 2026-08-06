@@ -110,14 +110,14 @@ impl Roster {
 		let mut mons: Vec<Option<CreatureState>> = vec![None; 2 * TEAM_SIZE];
 		for i in 0..team0.len() {
 			let monstate = match team0.get(i) {
-				Some(mon) => Some(mon.clone()),
+				Some(creature) => Some(creature.clone()),
 				None => None
 			};
 			mons[i*2] = monstate;
 		}
 		for i in 0..team1.len() {
 			let monstate = match team1.get(i) {
-				Some(mon) => Some(mon.clone()),
+				Some(creature) => Some(creature.clone()),
 				None => None
 			};
 			mons[i*2 + 1] = monstate;
@@ -158,13 +158,13 @@ impl BattleState {
 	pub fn outcome(&self) -> Option<Outcome> {
 		let mut side1_alive = false;
 		let mut side0_alive = false;
-		for mon in self.roster.team(&Team::Zero).into_iter().flatten() {
-			if mon.current_hp > 0 {
+		for creature in self.roster.team(&Team::Zero).into_iter().flatten() {
+			if creature.current_hp > 0 {
 				side0_alive = true;
 			}
 		}
-		for mon in self.roster.team(&Team::One).into_iter().flatten() {
-			if mon.current_hp > 0 {
+		for creature in self.roster.team(&Team::One).into_iter().flatten() {
+			if creature.current_hp > 0 {
 				side1_alive = true;
 			}
 		}

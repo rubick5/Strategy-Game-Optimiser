@@ -66,13 +66,13 @@ impl Moveslot {
 				}
 			},
 			Slot(n) => {
-				let mon = battle_state.get_mon(user).unwrap();
+				let creature = battle_state.get_mon(user).unwrap();
 				if *n > 1 {
 					println!("n: {}", n);
-					println!("mon: {:?}", mon);
+					println!("creature: {:?}", creature);
 				}
 
-				let move_id = mon.moves[*n];
+				let move_id = creature.moves[*n];
 				Command::MoveAction(
 					MoveCommand {
 						move_id,

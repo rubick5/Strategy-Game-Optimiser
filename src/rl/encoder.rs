@@ -23,8 +23,8 @@ pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool
 
 	let mut y: Vec<f32> = ordered
 		.flat_map(|rid| {
-			let mon = battle_state.roster.get_mon(RosterId(rid));
-			encode_mon(mon, registry)
+			let creature = battle_state.roster.get_mon(RosterId(rid));
+			encode_mon(creature, registry)
 		})
 		.collect();
 	y.push(replacement as u32 as f32);
@@ -34,14 +34,14 @@ pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool
 
 fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 	match op_mon {
-		Some(mon) => {
-			let attack = mon.get_stat(Stat::Attack, registry) as f32;
-			let defense = mon.get_stat(Stat::Defense, registry) as f32;
-			let speed = mon.get_stat(Stat::Speed, registry) as f32;
-			let current_hp = mon.current_hp as f32;
-			let attack_stage = mon.stat_changes.attack as f32;
-			let defense_stage = mon.stat_changes.defense as f32;
-			let speed_stage = mon.stat_changes.speed as f32;
+		Some(creature) => {
+			let attack = creature.get_stat(Stat::Attack, registry) as f32;
+			let defense = creature.get_stat(Stat::Defense, registry) as f32;
+			let speed = creature.get_stat(Stat::Speed, registry) as f32;
+			let current_hp = creature.current_hp as f32;
+			let attack_stage = creature.stat_changes.attack as f32;
+			let defense_stage = creature.stat_changes.defense as f32;
+			let speed_stage = creature.stat_changes.speed as f32;
 
 			let v = vec![
 				attack / ATTACK_SCALAR,
