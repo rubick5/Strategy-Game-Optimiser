@@ -1,5 +1,7 @@
-use crate::{battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, Team}}};
+use crate::battle::{command::{Command, MoveCommand}, state::{BattleState, PositionId, RosterId, TEAM_SIZE, Team}};
 
+pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
+pub const MOVESLOT_COUNT: usize = 4;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Moveslot {
@@ -9,6 +11,10 @@ pub enum Moveslot {
 use Moveslot::*;
 
 impl Moveslot {
+
+	pub fn all_moveslots() -> Vec<Self> {
+		(0..MAX_DECISION).map(|n| Self::from_number(n)).collect()
+	}
 	/**
 	 * Creates a moveslot from a number
 
@@ -16,8 +22,8 @@ impl Moveslot {
 	 */
 	pub fn from_number(n: usize) -> Self {
 		match n {
-			n if n < 4 => Slot(n),
-			n if n <= 9 => Switch(n - 4),
+			n if n < MOVESLOT_COUNT => Slot(n),
+			n if n < MAX_DECISION => Switch(n - 4),
 			_ => panic!("INVALID MOVESLOT SELECTED")
 		}
 	}

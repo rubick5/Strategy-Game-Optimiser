@@ -5,17 +5,15 @@
 // * versatile. Also note that we can reduce the weight of this as we get further into training
 // * once the correct strategies have actually been figured out.
 
-use crate::{battle::state::TEAM_SIZE, rl::{mask::Mask, moveslot::Moveslot, neural_net::NeuralNet}};
+use crate::rl::{mask::Mask, moveslot::{MAX_DECISION, Moveslot}, neural_net::NeuralNet};
 use rand::Rng;
 
 use std::{error::Error, f32::consts::E};
 
 // max moveslot discriminant
-pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
 
 pub const RELU_LEAK: f32 = 0.01;
 
-pub const MOVESLOT_COUNT: usize = 4;
 
 pub const ENTROPY_REWARD_RATE: f32 = 0.01;
 
