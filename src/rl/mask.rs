@@ -21,8 +21,8 @@ impl Mask {
 
 		let mut switches = [true; TEAM_SIZE];
 
-		for (index, mon) in battle_state.roster.team(team).iter().enumerate() {
-			switches[index] = match mon {
+		for (index, creature) in battle_state.roster.team(team).iter().enumerate() {
+			switches[index] = match creature {
 				Some(poke_state) => poke_state.current_hp != 0,
 				None => false
 			}

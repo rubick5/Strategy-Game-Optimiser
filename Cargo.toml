@@ -1,8 +1,8 @@
 [package]
-name = "poke-sim"
+name = "strat-optimizer"
 version = "0.1.0"
 edition = "2021"
-default-run = "poke-sim"
+default-run = "strat-optimizer"
 
 [dependencies]
 eframe = "0.36.0"

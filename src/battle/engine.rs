@@ -25,12 +25,12 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 		let (prio, speed) = match command {
 			Command::MoveAction(move_command) => {
 				let mv = registry.get_move(move_command.move_id);
-				let mon = battle_state.get_mon(move_command.user).unwrap();
-				if mon.current_hp <= 0 {
+				let creature = battle_state.get_mon(move_command.user).unwrap();
+				if creature.current_hp <= 0 {
 					continue;
 				}
 				let prio = mv.base_prio;
-				let speed = mon.get_stat(Stat::Speed, &registry);
+				let speed = creature.get_stat(Stat::Speed, &registry);
 				(prio, speed)
 			}
 			Command::Switch {current, new: _} => {
@@ -355,7 +355,7 @@ mod tests {
 		let mut rng = rand::rng();
 
 		// team0 has TWO mons: frail_attacker (roster 0) and fat_defender (roster 2).
-		// team1 has one mon (roster 1). field starts pointing position 0 -> roster 0.
+		// team1 has one creature (roster 1). field starts pointing position 0 -> roster 0.
 		let team0 = vec![
 			CreatureState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
 			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
@@ -365,7 +365,7 @@ mod tests {
 		];
 		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
 
-		// before switching, position 0's active mon is the frail_attacker (species 0)
+		// before switching, position 0's active creature is the frail_attacker (species 0)
 		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().species_id.0, 0);
 
 		// switch position 0 to the benched fat_defender at roster index 2
@@ -375,11 +375,11 @@ mod tests {
 		};
 		let next = step(battle_state, vec![switch], &registry, &mut rng).battle_state;
 
-		// the active mon at position 0 is now the fat_defender (species 1)
+		// the active creature at position 0 is now the fat_defender (species 1)
 		assert_eq!(next.get_mon(PositionId(0)).unwrap().species_id.0, 1);
 		// the field mapping now points position 0 at roster index 2
 		assert_eq!(next.field[PositionId(0)], RosterId(2));
-		// and the switched-OUT mon still exists in the roster (data preserved, not moved)
+		// and the switched-OUT creature still exists in the roster (data preserved, not moved)
 		assert_eq!(next.roster.get_mon(RosterId(0)).as_ref().unwrap().species_id.0, 0);
 	}
 

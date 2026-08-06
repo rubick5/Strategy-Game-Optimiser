@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use poke_sim::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
+use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);

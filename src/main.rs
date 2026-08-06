@@ -1,4 +1,4 @@
-use poke_sim::rl::train;
+use strat_optimizer::rl::train;
 use rand::prelude::SeedableRng;
 use rand::rngs::StdRng;
 
