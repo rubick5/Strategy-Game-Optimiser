@@ -3,7 +3,7 @@ use rand::Rng;
 use crate::battle::state::{BattleState, Outcome, PositionId, RosterId};
 use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
-use crate::battle::state::PokemonState;
+use crate::battle::state::CreatureState;
 use crate::model::pmove::MoveId;
 use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
@@ -62,12 +62,12 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 
 fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &BattleState, events: &mut Vec<Event>) {
 	let mv = registry.get_move(move_command.move_id);
-	let user: &PokemonState = battle_state.get_mon(move_command.user).unwrap();
+	let user: &CreatureState = battle_state.get_mon(move_command.user).unwrap();
 
 	let user_attack = user.get_stat(Stat::Attack, registry);
 
 	for target_pos in move_command.targets {
-		let target: &PokemonState = battle_state.get_mon(target_pos).unwrap();
+		let target: &CreatureState = battle_state.get_mon(target_pos).unwrap();
 		let target_defense =  target.get_stat(Stat::Defense, registry);
 
 		//log_move_usage(&battle_state, registry, move_command.user, target_pos, mv.move_id);
@@ -80,7 +80,7 @@ fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &B
 }
 
 fn handle_damage_event(amount: u32, target: PositionId, battle_state: &mut BattleState) -> Option<PositionId> {
-	let target_state: &mut PokemonState = battle_state.get_mut_mon(target).unwrap();
+	let target_state: &mut CreatureState = battle_state.get_mut_mon(target).unwrap();
 	target_state.current_hp = target_state.current_hp.saturating_sub(amount);
 	match target_state.current_hp {
 		0 => Some(target),
@@ -241,11 +241,11 @@ mod tests {
 	}
 
 	fn test_battle_state() -> BattleState {
-		let team0: Vec<PokemonState> = vec![
-			PokemonState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
+		let team0: Vec<CreatureState> = vec![
+			CreatureState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
 		];
-		let team1: Vec<PokemonState> = vec![
-			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+		let team1: Vec<CreatureState> = vec![
+			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		BattleState::from(
 			team0,
@@ -357,11 +357,11 @@ mod tests {
 		// team0 has TWO mons: frail_attacker (roster 0) and fat_defender (roster 2).
 		// team1 has one mon (roster 1). field starts pointing position 0 -> roster 0.
 		let team0 = vec![
-			PokemonState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
-			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		let team1 = vec![
-			PokemonState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
 

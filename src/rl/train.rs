@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::{battle::state::{BattleState, PokemonState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::{learn_from_batch}, mask::Mask}};
+use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::{learn_from_batch}, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;
@@ -22,27 +22,27 @@ const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
 */
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
-	let ps0 = PokemonState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let ps01 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let ps11 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
 }
 
 pub fn battle_state_1hp(registry: &Registry) -> BattleState {
-	let ps0 = PokemonState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let _ps01 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let _ps11 = PokemonState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let _ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let _ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let _ps1 = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = PokemonState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let _ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1])
 }
