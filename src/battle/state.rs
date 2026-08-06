@@ -181,6 +181,15 @@ impl BattleState {
 		}
 	}
 
+	pub fn get_mon_from_team(&self, team: &Team, team_index: usize) -> Option<&PokemonState> {
+		//self.roster.team(team).get(team_index).as_ref()?
+		let roster_id = match team {
+			Team::One => RosterId(1 + team_index * 2),
+			Team::Zero => RosterId(team_index * 2),
+		};
+		self.roster.get_mon(roster_id).as_ref()
+	}
+
 	pub fn get_mon(&self, pos: PositionId) -> Option<&PokemonState> {
 		let index = self.field[pos];
 		self.roster.get_mon(index).as_ref()

@@ -1,6 +1,6 @@
 use rand::{Rng, seq::IteratorRandom};
 
-use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::{moveslot::Moveslot, agent::{MAX_DECISION, MOVESLOT_COUNT}}};
+use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::{moveslot::{Moveslot, MAX_DECISION, MOVESLOT_COUNT}}};
 
 pub struct Mask {
 	pub allowed: [bool; MAX_DECISION]

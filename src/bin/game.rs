@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use poke_sim::{battle::state::{BattleState, PokemonState}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
+use poke_sim::{battle::state::{BattleState, PokemonState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = PokemonState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
@@ -26,6 +26,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 				battle: start_battle_state(&registry),
 				agent: BotAgent::relu_from_file(file_name)?,
 				log: vec![],
+				registry,
+				player_team: Team::One,
 				};
 			let _eframe_result = eframe::run_native(
 				"Poke battle",
