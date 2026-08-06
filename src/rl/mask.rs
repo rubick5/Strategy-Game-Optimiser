@@ -7,7 +7,7 @@ pub struct Mask {
 }
 
 impl Mask {
-	pub fn from_battle_state(team: Team, pos: PositionId, battle_state: &BattleState) -> Self {
+	pub fn from_battle_state(team: &Team, pos: PositionId, battle_state: &BattleState) -> Self {
 		let mut moveslots = [false; MOVESLOT_COUNT];
 		let current_mon = battle_state.get_mon(pos).unwrap();
 		

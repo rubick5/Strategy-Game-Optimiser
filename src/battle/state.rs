@@ -12,6 +12,15 @@ pub enum Team {
 	One
 }
 
+impl Team {
+	pub fn other(&self) -> Team {
+		match self {
+			Team::Zero => Team::One,
+			Team::One => Team::Zero,
+		}
+	}
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct PositionId(pub usize);
 
@@ -58,7 +67,7 @@ impl Field {
 		&self.mons
 	}
 
-	pub fn team(&self, team: Team) -> Vec<&RosterId> {
+	pub fn team(&self, team: &Team) -> Vec<&RosterId> {
 		match team {
 			Team::Zero => self.mons.iter().step_by(2).collect(),
 
@@ -90,8 +99,8 @@ pub struct Roster {
 
 impl Roster {
 
-	pub fn get_mon(&self, rid: RosterId) -> &Option<PokemonState> {
-		&self.mons[rid.0]
+	pub fn get_mon(&self, rid: RosterId) -> Option<&PokemonState> {
+		self.mons[rid.0].as_ref()
 	}
 	pub fn get_mut_mon(&mut self, rid: RosterId) -> Option<&mut PokemonState> {
 		self.mons[rid.0].as_mut()
@@ -118,7 +127,7 @@ impl Roster {
 		}
 	}
 
-	pub fn team(&self, team: Team) -> Vec<&Option<PokemonState>> {
+	pub fn team(&self, team: &Team) -> Vec<&Option<PokemonState>> {
 		match team {
 			Team::Zero => self.mons.iter().step_by(2).collect(),
 			Team::One => self.mons.iter().skip(1).step_by(2).collect()
@@ -162,12 +171,12 @@ impl BattleState {
 	pub fn outcome(&self) -> Option<Outcome> {
 		let mut side1_alive = false;
 		let mut side0_alive = false;
-		for mon in self.roster.team(Team::Zero).into_iter().flatten() {
+		for mon in self.roster.team(&Team::Zero).into_iter().flatten() {
 			if mon.current_hp > 0 {
 				side0_alive = true;
 			}
 		}
-		for mon in self.roster.team(Team::One).into_iter().flatten() {
+		for mon in self.roster.team(&Team::One).into_iter().flatten() {
 			if mon.current_hp > 0 {
 				side1_alive = true;
 			}
@@ -187,12 +196,12 @@ impl BattleState {
 			Team::One => RosterId(1 + team_index * 2),
 			Team::Zero => RosterId(team_index * 2),
 		};
-		self.roster.get_mon(roster_id).as_ref()
+		self.roster.get_mon(roster_id)
 	}
 
 	pub fn get_mon(&self, pos: PositionId) -> Option<&PokemonState> {
 		let index = self.field[pos];
-		self.roster.get_mon(index).as_ref()
+		self.roster.get_mon(index)
 	}
 
 	pub fn get_mut_mon(&mut self, pos: PositionId) -> Option<&mut PokemonState> {

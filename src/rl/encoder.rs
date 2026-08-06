@@ -23,7 +23,7 @@ pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool
 
 	let mut y: Vec<f32> = ordered
 		.flat_map(|rid| {
-			let mon = battle_state.roster.get_mon(RosterId(rid)).as_ref();
+			let mon = battle_state.roster.get_mon(RosterId(rid));
 			encode_mon(mon, registry)
 		})
 		.collect();
