@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 use rand_distr::Normal;
 use serde::{Serialize, Deserialize};
 use std::{error::Error, fs::File, io::Write};
@@ -62,7 +62,7 @@ where
 			hidden_activation_prime,
 		}
 	}
-	pub fn gen_random(rng: &mut impl Rng, layer_sizes: &[usize], hidden_activation: F, hidden_activation_prime: F) -> Self {
+	pub fn gen_random(rng: &mut dyn RngCore, layer_sizes: &[usize], hidden_activation: F, hidden_activation_prime: F) -> Self {
 		Self {
 			layers: (0..layer_sizes.len()-1).map(|n| (NeuronLayer::gen_random(rng, layer_sizes[n], layer_sizes[n+1]), vec![])).collect(),
 			hidden_activation,
@@ -119,7 +119,7 @@ pub struct NeuronLayer {
 }
 
 impl NeuronLayer {
-	pub fn gen_random(rng: &mut impl Rng, inputs: usize, outputs: usize) -> Self {
+	pub fn gen_random(rng: &mut dyn RngCore, inputs: usize, outputs: usize) -> Self {
 		Self {
 			most_recent_input: vec![],
 			most_recent_output: vec![],
@@ -169,7 +169,7 @@ impl Neuron {
 		return result;
 	}
 
-	pub fn gen_random(weight_count: usize, rng: &mut impl Rng) -> Self {
+	pub fn gen_random(weight_count: usize, rng: &mut dyn RngCore) -> Self {
 		let distribution = Normal::new(0.0, (2.0 / weight_count as f32).sqrt()).unwrap();
 		let weights = rng.sample_iter(distribution).take(weight_count).collect();
 		let bias = 0.0; //rng.random_range(-2.0..2.0);

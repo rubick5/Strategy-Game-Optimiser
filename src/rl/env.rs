@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::{battle::{command::Command, engine::{StepRequest, StepResult}, state::{BattleState, Outcome::{self, Side0Wins}}}, model::registry::Registry};
 use crate::battle::engine;
-pub fn step(old_battle_state: BattleState, actions: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> (BattleState, ) {
+pub fn step(old_battle_state: BattleState, actions: Vec<Command>, registry: &Registry, rng: &mut dyn RngCore) -> (BattleState, ) {
 
 	let StepResult { battle_state, step_request } = engine::step(old_battle_state, actions, registry, rng);
 

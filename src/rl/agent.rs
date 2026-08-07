@@ -6,7 +6,7 @@
 // * once the correct strategies have actually been figured out.
 
 use crate::rl::{mask::Mask, moveslot::{MAX_DECISION, Moveslot}, neural_net::NeuralNet};
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use std::{error::Error, f32::consts::E};
 
@@ -55,7 +55,7 @@ fn logit_max(logits: &[f32]) -> Option<f32> {
  * Inherits panicking behaviour from softmax function on
  * empty logits
  */
-fn softmax_then_select(logits: &[f32], rng: &mut impl Rng) -> usize {
+fn softmax_then_select(logits: &[f32], rng: &mut dyn RngCore) -> usize {
 	let probabilities = softmax(logits);
 	let random_selection = rng.random();
 	let mut counter = 0.0;
@@ -71,11 +71,21 @@ fn softmax_then_select(logits: &[f32], rng: &mut impl Rng) -> usize {
 	0
 }
 
+pub trait Agent {
+	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot;
+}
+
 #[derive(Debug, Clone)]
 pub struct BotAgent
 {
 	pub net: NeuralNet<fn(f32) -> f32>,
 	pub baseline: f32,
+}
+
+impl Agent for BotAgent {
+	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
+		self.choose_move_with_probs(representation, mask, rng).0
+	}
 }
 
 impl BotAgent
@@ -109,7 +119,7 @@ impl BotAgent
 	 * Returns a pair (x, y) where x is a randomly selected move from the probabilities
 	 * and y is the calculated probabilities.
 	 */
-	pub fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut impl Rng) -> (Moveslot, Vec<f32>) {
+	pub fn choose_move_with_probs(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> (Moveslot, Vec<f32>) {
 		let mut logits = self.net.forward(representation);
 		mask.apply(&mut logits); // edits them in place, remember
 
@@ -130,7 +140,7 @@ impl BotAgent
 	 * Size and number of hidden layers are defined in a magic number vector here, at some point
 	 * that should be moved out...
 	 */
-	pub fn init_random(weight_count: usize, rng: &mut impl Rng) -> Self {
+	pub fn init_random(weight_count: usize, rng: &mut dyn RngCore) -> Self {
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
 		BotAgent {
 			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),

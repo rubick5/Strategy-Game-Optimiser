@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::{learn_from_batch}, mask::Mask}};
 use crate::battle::state::Team;
@@ -49,7 +49,7 @@ pub fn battle_state_1hp(registry: &Registry) -> BattleState {
 
 
 
-pub fn main_loop(mut rng: &mut impl Rng) {
+pub fn main_loop(mut rng: &mut dyn RngCore) {
 	let registry = Registry::load();
 	let mut agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 	let mut battles_won = 0;
