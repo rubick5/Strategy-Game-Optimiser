@@ -1,4 +1,4 @@
-use rand::{Rng, seq::IteratorRandom};
+use rand::{Rng, RngCore, seq::IteratorRandom};
 
 use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::{moveslot::{Moveslot, MAX_DECISION, MOVESLOT_COUNT}}};
 
@@ -48,7 +48,7 @@ impl Mask {
 	 * Returns a random valid action from our mask.
 	 * Yields None if there are no valid actions
 	 */
-	pub fn get_random_valid(&self, rng: &mut impl Rng) -> Option<Moveslot> {
+	pub fn get_random_valid(&self, rng: &mut dyn RngCore) -> Option<Moveslot> {
 		//println!("{:?}", self.allowed);
 		self.allowed.iter().enumerate()
 			.filter(|(_, b)| **b)

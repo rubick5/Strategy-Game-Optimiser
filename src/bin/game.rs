@@ -1,6 +1,7 @@
 use std::error::Error;
 
-use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, neural_net::SavedNeuralNet}};
+use rand::{SeedableRng, rngs::StdRng};
+use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::BotAgent};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
@@ -18,16 +19,18 @@ pub fn start_battle_state(registry: &Registry) -> BattleState {
 pub fn main() -> Result<(), Box<dyn Error>> {
 	let registry = Registry::load();
 	let args: Vec<String> = std::env::args().collect();
+	let rng = StdRng::seed_from_u64(100);
 
 
 	match args.get(1).map(|s| s.as_str()) {
 		Some(file_name) => {
-			let battle_app = BattleApp {
+			let battle_app = BattleApp::<StdRng> {
 				battle: start_battle_state(&registry),
 				agent: BotAgent::relu_from_file(file_name)?,
 				log: vec![],
 				registry,
 				player_team: Team::One,
+				rng: rng,
 				};
 			let _eframe_result = eframe::run_native(
 				"Poke battle",

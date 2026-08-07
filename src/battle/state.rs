@@ -75,6 +75,13 @@ impl Field {
 
 		}
 	}
+
+	pub fn team_positions(&self, team: &Team) -> Vec<PositionId> {
+		match team {
+			Team::Zero => (0..self.mons.len()).step_by(2).map(|n| PositionId(n)).collect(),
+			Team::One => (1..self.mons.len()).step_by(2).map(|n| PositionId(n)).collect(),
+		}
+	}
 }
 
 impl std::ops::Index<PositionId> for Field {

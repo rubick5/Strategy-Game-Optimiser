@@ -1,36 +1,54 @@
 use eframe::egui;
+use rand::Rng;
 
-use crate::{battle::state::{BattleState, CreatureState, PositionId, Team}, model::registry::Registry, rl::{agent::BotAgent, mask::Mask, moveslot::Moveslot}};
+use crate::{battle::{engine, state::{BattleState, CreatureState, PositionId, Team}}, model::registry::Registry, rl::{agent::{Agent, BotAgent}, encoder, mask::Mask, moveslot::Moveslot}};
 
 
-pub struct BattleApp {
+pub struct BattleApp<R>
+where
+	R: Rng,
+{
 	pub battle: BattleState,
 	pub agent: BotAgent,
 	pub log: Vec<String>,
 	pub registry: Registry,
 	pub player_team: Team,
+	pub rng: R,
 }
 
-impl eframe::App for BattleApp {
+impl <R> eframe::App for BattleApp<R>
+where
+	R: Rng
+{
 	fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-		let position = match self.player_team {
-			Team::One => PositionId(1),
-			Team::Zero => PositionId(0),
-		};
+		let player_position = self.battle.field.team_positions(&self.player_team)[0];
+		let agent_position = self.battle.field.team_positions(&self.player_team.other())[0];
 
 		self.show_battle_state(ui);
 		let mut move_selected: Option<Moveslot> = None;
 		egui::Grid::new("moves").show(ui, |ui| {
-			move_selected = self.generate_moveslot_buttons(ui, position);
+			move_selected = self.generate_moveslot_buttons(ui, player_position);
 		});
 
 		if let Some(moveslot) = move_selected {
 			// do some stuff
+			let encoding = encoder::encode(&self.battle, &self.registry, false);
+			let agent_mask = Mask::from_battle_state(&self.player_team.other(), agent_position, &self.battle);
+			let agent_moveslot = self.agent.choose_move(&encoding, &agent_mask, &mut self.rng);
+			let commands = vec![
+				agent_moveslot.to_command(agent_position, &self.battle),
+				moveslot.to_command(player_position, &self.battle),
+			];
+			let step_result = engine::step(self.battle.clone(), commands, &self.registry, &mut self.rng);
+			self.battle = step_result.battle_state;
 		}
 	}
 }
 
-impl BattleApp {
+impl <R> BattleApp<R>
+where
+	R: Rng
+{
 
 	fn display_creature_state(&self, ps: &CreatureState) -> String {
 		let species_data = self.registry.get_species_data(ps.species_id);

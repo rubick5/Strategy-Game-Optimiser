@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use crate::battle::state::{BattleState, Outcome, PositionId, RosterId};
 use crate::battle::command::{Command, MoveCommand};
@@ -13,7 +13,7 @@ const SWITCHING_PRIO: i8 = 9;
 const MIN_PRIORITY: i8 = -7;
 const MIN_SPEED: u32 = 0;
 
-fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState, rng: &mut impl Rng) -> Option<Command> {
+fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState, rng: &mut dyn RngCore) -> Option<Command> {
 	if commands.is_empty() {
 		return None;
 	}
@@ -103,7 +103,7 @@ pub struct StepResult {
 	pub step_request: StepRequest,
 }
 
-pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut impl Rng) -> StepResult {
+pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut dyn RngCore) -> StepResult {
 	let mut commands: Vec<Command> = commands.clone();
 	let mut events: Vec<Event> = Vec::new();
 	let mut fainted: Vec<PositionId> = vec![];

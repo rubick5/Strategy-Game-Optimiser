@@ -1,6 +1,7 @@
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use crate::battle::state::Team;
+use crate::rl::agent::Agent;
 use crate::rl::train::EXPLORATION_CHANCE;
 use crate::{
 	battle::{
@@ -35,8 +36,8 @@ pub fn play_out_battle(
 	mut battle: BattleState,
 	registry: &Registry,
 	agent: &mut BotAgent,
-	opponent: &mut BotAgent,
-	rng: &mut impl Rng,
+	opponent: &mut dyn Agent,
+	rng: &mut dyn RngCore,
 ) -> PlayedBattle {
 	let mut actions_and_states: Vec<Step> = Vec::new();
 	let mut turn_count = 0;
@@ -51,11 +52,11 @@ pub fn play_out_battle(
 
 				let encoding = encoder::encode(&battle, registry, false);
 				let (mut agent_moveslot, probabilities) =
-					agent.choose_move(&encoding, &agent_mask, rng);
+					agent.choose_move_with_probs(&encoding, &agent_mask, rng);
 				if rng.random::<f32>() < EXPLORATION_CHANCE {
 					agent_moveslot = agent_mask.get_random_valid(rng).unwrap();
 				}
-				let (opponent_moveslot, _) = opponent.choose_move(&encoding, &opponent_mask, rng);
+				let opponent_moveslot = opponent.choose_move(&encoding, &opponent_mask, rng);
 
 				let actions = vec![
 					agent_moveslot.to_command(PositionId(0), &battle),
@@ -78,7 +79,7 @@ pub fn play_out_battle(
 					.map(|pos| {
 						let encoding = encoder::encode(&battle, registry, true);
 						let mask = Mask::from_battle_state(&pos.team(), *pos, &battle);
-						let replacement = agent.choose_move(&encoding, &mask, rng);
+						let replacement = agent.choose_move_with_probs(&encoding, &mask, rng);
 						replacement.0.to_command(*pos, &battle)
 					})
 					.collect();
