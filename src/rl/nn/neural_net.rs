@@ -90,7 +90,6 @@ where
 	pub fn backward(&mut self, mut current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32) {
 		self.forward(input_received); // sets the pre_activation cache for this decision made
 		
-
 		let ((output_layer, _), hidden_layers) =
 			self.layers
 			.split_last_mut()
