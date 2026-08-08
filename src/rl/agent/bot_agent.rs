@@ -1,4 +1,4 @@
-use crate::rl::{agent::{Agent, train_config::TrainConfig}, battle_playout::PlayedBattle, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
+use crate::rl::{agent::{Agent}, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
 use rand::{Rng, RngCore};
 
 use std::{error::Error, f32::consts::E};
@@ -137,7 +137,7 @@ impl BotAgent
 	/**
 	 * Learns from previous mistakes or successes. Needs a bunch of weird arguments for the maths to work out.
 	 */
-	pub fn backprop(&mut self, train_config: &TrainConfig, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
+	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32], learning_rate: f32, entropy_rate: f32) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
 
@@ -150,11 +150,11 @@ impl BotAgent
 			let entropy_reward = if last_probabilities[index] == 0.0 {
 				0.0
 			} else {
-				train_config.entropy_reward_rate * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
+				entropy_rate * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
 			};
 			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator) + entropy_reward
 		}).collect();
 
-		self.net.backward(current_errors, &encoding)
+		self.net.backward(current_errors, &encoding, learning_rate)
 	}
 }
