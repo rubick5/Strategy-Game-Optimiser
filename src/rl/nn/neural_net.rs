@@ -3,9 +3,6 @@ use serde::{Serialize, Deserialize};
 use std::{error::Error, fs::File, io::Write};
 use crate::rl::nn::neuron_layer::NeuronLayer;
 
-const LEARNING_RATE: f32 = 0.01;
-const CLIP: f32 = 0.1;
-
 #[derive(Serialize, Deserialize)]
 pub struct SavedNeuralNet {
 	pub layers: Vec<NeuronLayer>,
