@@ -1,7 +1,7 @@
 use eframe::egui;
-use rand::{Rng, RngCore};
+use rand::RngCore;
 
-use crate::{battle::{engine, state::{BattleState, CreatureState, PositionId, Team}}, model::registry::Registry, rl::{agent::{Agent, BotAgent}, encoder, mask::Mask, moveslot::Moveslot}};
+use crate::{battle::{engine, state::{BattleState, CreatureState, PositionId, Team}}, model::registry::Registry, rl::{agent::Agent, encoder, mask::Mask, moveslot::Moveslot}};
 
 
 pub struct BattleApp<R>
