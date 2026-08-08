@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 const CLIP: f32 = 0.1;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Neuron {
 	pub weights: Vec<f32>,
 	pub bias: f32,
