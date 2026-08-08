@@ -1,6 +1,6 @@
 use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
-use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, BotAgent, RandomAgent, SpamAgent}, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::learn_from_batch, mask::Mask}};
+use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, bot_agent::BotAgent, random_agent::RandomAgent, spam_agent::SpamAgent, bot_agent::BASELINE_LEARNING_RATE, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::learn_from_batch, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;
@@ -13,13 +13,6 @@ const BATCH_SIZE: usize = 32;
 const BATCH_PRINT_FREQ: usize = 50;
 const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
 
-/* We want to:
-	* Model a strategy as a net
-	* Test the strategy against a random strategy
-	* See how well our strategy does against the random one
-	* Backpropogate our loss
-	(We need to figure out what loss means)
-*/
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
@@ -47,6 +40,13 @@ pub fn battle_state_1hp(registry: &Registry) -> BattleState {
 	BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1])
 }
 
+fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_batches: usize) {
+	let batch_num_f32 = batch_num as f32;
+	let total_batches_f32 = total_batches as f32;
+	train_config.learning_rate = train_config.learning_rate * (total_batches_f32 - batch_num_f32) / total_batches_f32;
+	train_config.entropy_reward_rate = train_config.entropy_reward_rate / 2.0;
+}
+
 
 
 pub fn main_loop(mut rng: &mut dyn RngCore) {
@@ -57,6 +57,12 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 
 	let mut best_agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 	let mut max_battles_won: i32 = 0;
+
+	let mut train_config = TrainConfig {
+		learning_rate: 0.05,
+		entropy_reward_rate: 0.05,
+		baseline_learning_rate: BASELINE_LEARNING_RATE
+	};
 	
 	let mut opponents: Vec<Box<dyn Agent>> = vec![
 		Box::new(RandomAgent{}),
@@ -83,6 +89,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 			current_batch.push(played_battle);
 		}
 		if batch_num % BATCH_PRINT_FREQ == 0 {
+			decay_train_config(&mut train_config, batch_num, BATCH_COUNT);
 			println!("batch {}: battles won: {} out of {}", batch_num, battles_won, BATCH_PRINT_GAP_SIZE);
 			if battles_won > max_battles_won {
 				best_agent = agent.clone();
@@ -90,7 +97,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 			}
 			battles_won = 0;
 		}
-		learn_from_batch(&mut agent, &current_batch, 1.0);
+		learn_from_batch(&mut agent, &current_batch, 1.0, &train_config);
 	}
 	println!("final state of agent:");
 	final_agent_checks(&mut agent, &registry);

@@ -1,9 +1,9 @@
-use crate::rl::{agent::{BASELINE_LEARNING_RATE, BotAgent}, battle_playout::{PlayedBattle, Step}};
+use crate::rl::{agent::{bot_agent::{BASELINE_LEARNING_RATE, BotAgent}, train_config::TrainConfig}, battle_playout::{PlayedBattle, Step}};
 
 const DAMPING_CONSTANT: f32 = 0.95;
 const BATCH_STANDARD_CONST: f32 = 0.05;
 
-pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32) {
+pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig) {
 	if batch.is_empty() {
 		return;
 	}
@@ -21,15 +21,16 @@ pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32
 	}).collect();
 
 	for battle_index in 0..batch.len() {
-		learn_from_battle(agent, &batch[battle_index], standardised[battle_index]);
+		learn_from_battle(&train_config, agent, &batch[battle_index], standardised[battle_index]);
+	}
+
+	pub fn learn_from_battle(train_config: &TrainConfig, agent: &mut BotAgent, played_battle: &PlayedBattle, scalar: f32) {
+		let mut gt = scalar;
+		agent.baseline += (played_battle.battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
+		for Step { encoding, move_chosen, probabilities } in played_battle.steps.iter() {
+			agent.backprop(train_config, *move_chosen, played_battle.battle_reward, gt, &encoding, &probabilities);
+			gt = gt * DAMPING_CONSTANT;
+		}
 	}
 }
 
-pub fn learn_from_battle(agent: &mut BotAgent, played_battle: &PlayedBattle, scalar: f32) {
-	let mut gt = scalar;
-	agent.baseline += (played_battle.battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
-	for Step { encoding, move_chosen, probabilities } in played_battle.steps.iter() {
-		agent.backprop(*move_chosen, played_battle.battle_reward, gt, &encoding, &probabilities);
-		gt = gt * DAMPING_CONSTANT;
-	}
-}
