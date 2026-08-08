@@ -1,6 +1,6 @@
-use rand::{Rng, RngCore};
+use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
-use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::BotAgent, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::{learn_from_batch}, mask::Mask}};
+use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, BotAgent, RandomAgent, SpamAgent}, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::learn_from_batch, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;
@@ -57,16 +57,26 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 
 	let mut best_agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
 	let mut max_battles_won: i32 = 0;
-	let mut opponent: BotAgent;
+	
+	let mut opponents: Vec<Box<dyn Agent>> = vec![
+		Box::new(RandomAgent{}),
+		Box::new(SpamAgent{ index: 1 }),
+		Box::new(SpamAgent{index: 0}),
+		];
+
+	let battle_states: Vec<BattleState> = vec![
+		start_battle_state(&registry),
+		start_battle_state(&registry),
+		battle_state_1hp(&registry),
+	];
 	for batch_num in 0..BATCH_COUNT {
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();
-		opponent = agent.clone();
 		for _ in 0..BATCH_SIZE {
-			//opponent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, rng);
-			let battle: BattleState = start_battle_state(&registry);
+			let opponent = opponents.choose_mut(rng).unwrap();
+			let battle: BattleState = battle_states.choose(rng).unwrap_or(&battle_state_1hp(&registry)).clone();
 
-			let played_battle = play_out_battle(battle, &registry, &mut agent, &mut opponent, rng);
-			
+			let played_battle = play_out_battle(battle, &registry, &mut agent, opponent, rng);
+
 			if played_battle.battle_reward > 0.0 {
 				battles_won += 1;
 			}

@@ -26,7 +26,7 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 		Some(file_name) => {
 			let battle_app = BattleApp::<StdRng> {
 				battle: start_battle_state(&registry),
-				agent: BotAgent::relu_from_file(file_name)?,
+				agent: Box::new(BotAgent::relu_from_file(file_name)?),
 				log: vec![],
 				registry,
 				player_team: Team::One,
