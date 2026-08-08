@@ -28,7 +28,15 @@ pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32
 		let mut gt = scalar;
 		agent.baseline += (played_battle.battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
 		for Step { encoding, move_chosen, probabilities } in played_battle.steps.iter() {
-			agent.backprop(train_config, *move_chosen, played_battle.battle_reward, gt, &encoding, &probabilities);
+			agent.backprop(
+				*move_chosen,
+				played_battle.battle_reward,
+				gt,
+				&encoding,
+				&probabilities,
+				train_config.learning_rate,
+				train_config.entropy_reward_rate
+			);
 			gt = gt * DAMPING_CONSTANT;
 		}
 	}
