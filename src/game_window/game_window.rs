@@ -1,15 +1,15 @@
 use eframe::egui;
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use crate::{battle::{engine, state::{BattleState, CreatureState, PositionId, Team}}, model::registry::Registry, rl::{agent::{Agent, BotAgent}, encoder, mask::Mask, moveslot::Moveslot}};
 
 
 pub struct BattleApp<R>
 where
-	R: Rng,
+	R: RngCore,
 {
 	pub battle: BattleState,
-	pub agent: BotAgent,
+	pub agent: Box<dyn Agent>,
 	pub log: Vec<String>,
 	pub registry: Registry,
 	pub player_team: Team,
@@ -18,7 +18,7 @@ where
 
 impl <R> eframe::App for BattleApp<R>
 where
-	R: Rng
+	R: RngCore
 {
 	fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
 		let player_position = self.battle.field.team_positions(&self.player_team)[0];
@@ -47,7 +47,7 @@ where
 
 impl <R> BattleApp<R>
 where
-	R: Rng
+	R: RngCore
 {
 
 	fn display_creature_state(&self, ps: &CreatureState) -> String {

@@ -3,7 +3,7 @@ use rand_distr::Normal;
 use serde::{Serialize, Deserialize};
 use std::{error::Error, fs::File, io::Write};
 
-const LEARNING_RATE: f32 = 0.0005;
+const LEARNING_RATE: f32 = 0.01;
 const CLIP: f32 = 0.1;
 
 #[derive(Serialize, Deserialize)]

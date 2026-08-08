@@ -75,6 +75,34 @@ pub trait Agent {
 	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot;
 }
 
+impl <A: Agent + ?Sized> Agent for Box<A> {
+	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
+		(**self).choose_move(representation, mask, rng)
+	}
+}
+
+pub struct RandomAgent {}
+
+impl Agent for RandomAgent {
+	fn choose_move(&mut self, _representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
+		mask.get_random_valid(rng).expect("no actions available and tried to sample random")
+	}
+}
+
+pub struct SpamAgent {
+	pub index: usize
+}
+
+impl Agent for SpamAgent {
+	fn choose_move(&mut self, _representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
+		if mask.allowed[self.index] {
+			Moveslot::from_number(self.index)
+		} else {
+			mask.get_random_valid(rng).expect("no actions available and tried to sample random (spamagent)")
+		}
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct BotAgent
 {
