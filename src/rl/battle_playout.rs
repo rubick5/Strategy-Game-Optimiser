@@ -2,6 +2,7 @@ use rand::{Rng, RngCore};
 
 use crate::battle::state::Team;
 use crate::rl::agent::Agent;
+use crate::rl::agent::bot_agent::BotAgent;
 use crate::rl::train::EXPLORATION_CHANCE;
 use crate::{
 	battle::{
@@ -11,7 +12,6 @@ use crate::{
 	},
 	model::registry::Registry,
 	rl::{
-		agent::BotAgent,
 		encoder,
 		mask::Mask,
 		moveslot::Moveslot,

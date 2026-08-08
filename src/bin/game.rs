@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use rand::{SeedableRng, rngs::StdRng};
-use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::BotAgent};
+use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
@@ -22,24 +22,20 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	let rng = StdRng::seed_from_u64(100);
 
 
-	match args.get(1).map(|s| s.as_str()) {
-		Some(file_name) => {
-			let battle_app = BattleApp::<StdRng> {
-				battle: start_battle_state(&registry),
-				agent: Box::new(BotAgent::relu_from_file(file_name)?),
-				log: vec![],
-				registry,
-				player_team: Team::One,
-				rng: rng,
-				};
-			let _eframe_result = eframe::run_native(
-				"Poke battle",
-				eframe::NativeOptions::default(),
-				Box::new(|_cc| Ok(Box::new(battle_app))),
-			)?;
-		}
-		None => println!("No file input received...")
-	}
+	let file_name = args.get(1).map(|s| s.as_str()).unwrap_or("agent.json");
+	let battle_app = BattleApp::<StdRng> {
+		battle: start_battle_state(&registry),
+		agent: Box::new(BotAgent::relu_from_file(file_name)?),
+		log: vec![],
+		registry,
+		player_team: Team::One,
+		rng: rng,
+		};
+	let _eframe_result = eframe::run_native(
+		"battle",
+		eframe::NativeOptions::default(),
+		Box::new(|_cc| Ok(Box::new(battle_app))),
+	)?;
 	Ok(())
 	
 }

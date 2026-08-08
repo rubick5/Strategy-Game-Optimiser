@@ -1,16 +1,8 @@
-/// WE NEED TO ADD SOME ENCOURAGEMENT FOR ENTROPY INTO THE CODE
-/// SO THAT IT DOESNT JUST CONVERGE LIKE CRAZY
-// * Technique 1: x% of the time just pick a random action instead of the model's one
-// * Technique 2: use a entropy reward in the output layer's error to encourage the model to stay
-// * versatile. Also note that we can reduce the weight of this as we get further into training
-// * once the correct strategies have actually been figured out.
-
-use crate::rl::{mask::Mask, moveslot::{MAX_DECISION, Moveslot}, neural_net::NeuralNet};
+use crate::rl::{agent::{Agent, train_config::TrainConfig}, battle_playout::PlayedBattle, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
 use rand::{Rng, RngCore};
 
 use std::{error::Error, f32::consts::E};
 
-// max moveslot discriminant
 
 pub const RELU_LEAK: f32 = 0.01;
 
@@ -18,8 +10,6 @@ pub const RELU_LEAK: f32 = 0.01;
 pub const ENTROPY_REWARD_RATE: f32 = 0.01;
 
 pub const BASELINE_LEARNING_RATE: f32 = 0.05;
-
-
 
 /**
  * Computes the softmax of the logits given
@@ -69,38 +59,6 @@ fn softmax_then_select(logits: &[f32], rng: &mut dyn RngCore) -> usize {
 		}
 	}
 	0
-}
-
-pub trait Agent {
-	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot;
-}
-
-impl <A: Agent + ?Sized> Agent for Box<A> {
-	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
-		(**self).choose_move(representation, mask, rng)
-	}
-}
-
-pub struct RandomAgent {}
-
-impl Agent for RandomAgent {
-	fn choose_move(&mut self, _representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
-		mask.get_random_valid(rng).expect("no actions available and tried to sample random")
-	}
-}
-
-pub struct SpamAgent {
-	pub index: usize
-}
-
-impl Agent for SpamAgent {
-	fn choose_move(&mut self, _representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
-		if mask.allowed[self.index] {
-			Moveslot::from_number(self.index)
-		} else {
-			mask.get_random_valid(rng).expect("no actions available and tried to sample random (spamagent)")
-		}
-	}
 }
 
 #[derive(Debug, Clone)]
@@ -179,7 +137,7 @@ impl BotAgent
 	/**
 	 * Learns from previous mistakes or successes. Needs a bunch of weird arguments for the maths to work out.
 	 */
-	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
+	pub fn backprop(&mut self, train_config: &TrainConfig, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32]) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
 
@@ -192,7 +150,7 @@ impl BotAgent
 			let entropy_reward = if last_probabilities[index] == 0.0 {
 				0.0
 			} else {
-				ENTROPY_REWARD_RATE * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
+				train_config.entropy_reward_rate * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
 			};
 			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator) + entropy_reward
 		}).collect();
@@ -200,4 +158,3 @@ impl BotAgent
 		self.net.backward(current_errors, &encoding)
 	}
 }
-
