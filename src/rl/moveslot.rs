@@ -1,4 +1,4 @@
-use crate::battle::{command::{Command, MoveCommand}, state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId, roster::RosterId}};
+use crate::{battle::{command::{Command, MoveCommand}, state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId, roster::RosterId}}, model::registry::Registry};
 
 pub const MAX_DECISION: usize = MOVESLOT_COUNT + TEAM_SIZE;
 pub const MOVESLOT_COUNT: usize = 4;
@@ -46,13 +46,9 @@ impl Moveslot {
 
 	 * This will need significant changes later as we add different types of moves
 	 */
-	pub fn to_command(&self, user: PositionId, battle_state: &BattleState) -> Command {
+	pub fn to_command(&self, user: PositionId, battle_state: &BattleState, registry: &Registry) -> Command {
 		// for now, if we are pos 0 we target 1 and if pos 1 we target 0:
-		let target = match user {
-			PositionId(0) => PositionId(1),
-			PositionId(1) => PositionId(0),
-			_ => panic!("someone tried to use a move, but they don't exist!")
-		};
+		
 		let team = user.team();
 
 		match self {
@@ -71,13 +67,13 @@ impl Moveslot {
 					println!("n: {}", n);
 					println!("creature: {:?}", creature);
 				}
-
 				let move_id = creature.moves[*n];
+				let mv = registry.get_move(move_id);
 				Command::MoveAction(
 					MoveCommand {
 						move_id,
 						user,
-						targets: vec![target],
+						targets: mv.move_targeting.calc_targets(battle_state, user),
 					}
 				)
 			}

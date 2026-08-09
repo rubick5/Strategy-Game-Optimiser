@@ -58,6 +58,10 @@ impl Field {
 			Team::One => (1..self.mons.len()).step_by(2).map(|n| PositionId(n)).collect(),
 		}
 	}
+
+	pub fn all_field_positions(&self) -> Vec<PositionId> {
+		(0..self.mons.len()).map(|n| PositionId(n)).collect()
+	}
 }
 
 impl std::ops::Index<PositionId> for Field {

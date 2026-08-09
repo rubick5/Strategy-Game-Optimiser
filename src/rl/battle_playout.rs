@@ -9,7 +9,7 @@ use crate::rl::train::EXPLORATION_CHANCE;
 use crate::{
 	battle::{
 		command::Command,
-		engine::{self, StepRequest, StepResult},
+		engine::engine::{self, StepRequest, StepResult},
 		state::Outcome,
 	},
 	model::registry::Registry,
@@ -61,8 +61,8 @@ pub fn play_out_battle(
 				let opponent_moveslot = opponent.choose_move(&encoding, &opponent_mask, rng);
 
 				let actions = vec![
-					agent_moveslot.to_command(PositionId(0), &battle),
-					opponent_moveslot.to_command(PositionId(1), &battle),
+					agent_moveslot.to_command(PositionId(0), &battle, registry),
+					opponent_moveslot.to_command(PositionId(1), &battle, registry),
 				];
 				actions_and_states.push(Step {
 					encoding,
@@ -79,10 +79,11 @@ pub fn play_out_battle(
 				let commands: Vec<Command> = positions
 					.iter()
 					.map(|pos| {
+						// are we learning from replacement? will we end up being bad at it because we don't learn on it?
 						let encoding = encoder::encode(&battle, registry, true);
 						let mask = Mask::from_battle_state(&pos.team(), *pos, &battle);
 						let replacement = agent.choose_move_with_probs(&encoding, &mask, rng);
-						replacement.0.to_command(*pos, &battle)
+						replacement.0.to_command(*pos, &battle, registry)
 					})
 					.collect();
 				StepResult {

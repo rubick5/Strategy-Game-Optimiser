@@ -3,6 +3,7 @@ pub mod roster;
 pub mod creature_state;
 pub mod battle_state;
 pub mod stat_stages;
+pub mod non_volatile_status;
 
 pub const TEAM_SIZE: usize = 6;
 
