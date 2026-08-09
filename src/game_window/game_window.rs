@@ -1,7 +1,7 @@
 use eframe::egui;
 use rand::RngCore;
 
-use crate::{battle::{engine, state::{Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId}}, model::registry::Registry, rl::{agent::Agent, encoder, mask::Mask, moveslot::Moveslot}};
+use crate::{battle::{engine::engine, state::{Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId}}, model::registry::Registry, rl::{agent::Agent, encoder, mask::Mask, moveslot::Moveslot}};
 
 
 pub struct BattleApp<R>
@@ -36,8 +36,8 @@ where
 			let agent_mask = Mask::from_battle_state(&self.player_team.other(), agent_position, &self.battle);
 			let agent_moveslot = self.agent.choose_move(&encoding, &agent_mask, &mut self.rng);
 			let commands = vec![
-				agent_moveslot.to_command(agent_position, &self.battle),
-				moveslot.to_command(player_position, &self.battle),
+				agent_moveslot.to_command(agent_position, &self.battle, &self.registry),
+				moveslot.to_command(player_position, &self.battle, &self.registry),
 			];
 			let step_result = engine::step(self.battle.clone(), commands, &self.registry, &mut self.rng);
 			self.battle = step_result.battle_state;

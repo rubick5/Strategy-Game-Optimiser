@@ -245,10 +245,10 @@ mod tests {
 
 	fn test_battle_state() -> BattleState {
 		let team0: Vec<CreatureState> = vec![
-			CreatureState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&frail_attacker(), vec![MoveId(0), MoveId(1)]),
 		];
 		let team1: Vec<CreatureState> = vec![
-			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		BattleState::from(
 			team0,
@@ -359,11 +359,11 @@ mod tests {
 		// team0 has TWO mons: frail_attacker (roster 0) and fat_defender (roster 2).
 		// team1 has one creature (roster 1). field starts pointing position 0 -> roster 0.
 		let team0 = vec![
-			CreatureState::from_species_data(frail_attacker(), vec![MoveId(0), MoveId(1)]),
-			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&frail_attacker(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		let team1 = vec![
-			CreatureState::from_species_data(fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
 

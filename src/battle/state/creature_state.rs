@@ -1,4 +1,4 @@
-use crate::{battle::state::stat_stages::StatStages, model::{pmove::MoveId, registry::Registry, speciesdata::{SpeciesDatum, SpeciesId, Stat}}};
+use crate::{battle::state::{non_volatile_status::NonVolatileStatus, stat_stages::StatStages}, model::{pmove::MoveId, registry::Registry, speciesdata::{SpeciesDatum, SpeciesId, Stat}}};
 
 #[derive(Debug, Clone)]
 pub struct CreatureState {
@@ -6,25 +6,23 @@ pub struct CreatureState {
 	pub stat_changes: StatStages,
 	pub current_hp: u32,
 	pub moves: Vec<MoveId>,
+	pub non_vol_status: NonVolatileStatus,
 }
 
 impl CreatureState {
-	pub fn from_species_data(species_data: SpeciesDatum, moves: Vec<MoveId>) -> Self {
+	pub fn from_species_data(species_data: &SpeciesDatum, moves: Vec<MoveId>) -> Self {
 		CreatureState {
 			species_id: species_data.species_id,
 			stat_changes: StatStages::new(),
 			current_hp: species_data.base_hp as u32,
 			moves,
+			non_vol_status: NonVolatileStatus::None,
 		}
 	}
 	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {
 		let species_datum = registry.get_species_data(species_id);
-		CreatureState {
-			species_id,
-			stat_changes: StatStages::new(),
-			current_hp: species_datum.base_hp as u32,
-			moves,
-		}
+		Self::from_species_data(species_datum, moves)
+		
 	}
 	pub fn get_stat(&self, stat: Stat, registry: &Registry) -> u32 {
 		let species_data = registry.get_species_data(self.species_id);
