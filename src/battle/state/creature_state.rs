@@ -5,6 +5,7 @@ pub struct CreatureState {
 	pub species_id: SpeciesId,
 	pub stat_changes: StatStages,
 	pub current_hp: u32,
+	pub max_hp: u32,
 	pub moves: Vec<MoveId>,
 	pub non_vol_status: NonVolatileStatus,
 }
@@ -15,6 +16,7 @@ impl CreatureState {
 			species_id: species_data.species_id,
 			stat_changes: StatStages::new(),
 			current_hp: species_data.base_hp as u32,
+			max_hp: species_data.base_hp as u32,
 			moves,
 			non_vol_status: NonVolatileStatus::None,
 		}
