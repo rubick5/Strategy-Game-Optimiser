@@ -11,6 +11,7 @@ use crate::model::pmove::MoveId;
 use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::{SpeciesDatum, Stat};
+use crate::battle::state::non_volatile_status::NonVolatileStatus;
 
 const SWITCHING_PRIO: i8 = 9;
 const MIN_PRIORITY: i8 = -7;
@@ -110,6 +111,7 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 	let mut commands: Vec<Command> = commands.clone();
 	let mut events: Vec<Event> = Vec::new();
 	let mut fainted: Vec<PositionId> = vec![];
+	let mut non_vol_status_handled = false;
 	loop {
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
@@ -130,11 +132,19 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 					},
 					Some(Command::Switch {current, new}) => 
 						events.push(Event::Switch { current, new }),
-					None => break
+					None => {
+						if !non_vol_status_handled {
+							queue_non_volatile_status(&mut battle_state, &mut events);
+							non_vol_status_handled = true;
+						} else {
+							break;
+						}
+					}
 				}
 			}
 		}
 	}
+
 	let step_request =
 		if let Some(outcome) = battle_state.outcome() {
 			StepRequest::Finished(outcome)
@@ -146,6 +156,26 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 	StepResult {
 		battle_state,
 		step_request
+	}
+}
+
+fn queue_non_volatile_status(bs: &mut BattleState, queue: &mut Vec<Event>) {
+	for pos in bs.field.all_field_positions() {
+		let mut_mon = bs.get_mut_mon(pos);
+		if let Some(m) = mut_mon {
+			match m.non_vol_status {
+				NonVolatileStatus::None => {},
+				NonVolatileStatus::Poison => {
+					queue.push(Event::DealDamage { amount: m.max_hp / 8, target: pos });
+				},
+				NonVolatileStatus::BadPoison => {
+					queue.push(Event::DealDamage { amount: m.max_hp / 16, target: pos });
+				},
+				NonVolatileStatus::Burn => {
+					queue.push(Event::DealDamage { amount: m.max_hp / 16, target: pos });
+				},
+			}
+		}
 	}
 }
 
