@@ -1,6 +1,8 @@
 use rand::{Rng, RngCore};
 
 use crate::battle::state::Team;
+use crate::battle::state::battle_state::BattleState;
+use crate::battle::state::field::PositionId;
 use crate::rl::agent::Agent;
 use crate::rl::agent::bot_agent::BotAgent;
 use crate::rl::train::EXPLORATION_CHANCE;
@@ -8,7 +10,7 @@ use crate::{
 	battle::{
 		command::Command,
 		engine::{self, StepRequest, StepResult},
-		state::{BattleState, Outcome, PositionId},
+		state::Outcome,
 	},
 	model::registry::Registry,
 	rl::{

@@ -1,6 +1,6 @@
 use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
-use crate::{battle::state::{BattleState, CreatureState, PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, bot_agent::BotAgent, random_agent::RandomAgent, spam_agent::SpamAgent, bot_agent::BASELINE_LEARNING_RATE, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::learn_from_batch, mask::Mask}};
+use crate::{battle::state::{battle_state::BattleState, creature_state::CreatureState, field::PositionId}, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::{agent::{Agent, bot_agent::{BASELINE_LEARNING_RATE, BotAgent}, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, learner::learn_from_batch, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;

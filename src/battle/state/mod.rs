@@ -1,0 +1,28 @@
+pub mod field;
+pub mod roster;
+pub mod creature_state;
+pub mod battle_state;
+pub mod stat_stages;
+
+pub const TEAM_SIZE: usize = 6;
+
+#[derive(PartialEq)]
+pub enum Team {
+	Zero,
+	One
+}
+
+impl Team {
+	pub fn other(&self) -> Team {
+		match self {
+			Team::Zero => Team::One,
+			Team::One => Team::Zero,
+		}
+	}
+}
+
+pub enum Outcome {
+	Side0Wins,
+	Side1Wins,
+	Draw,
+}
