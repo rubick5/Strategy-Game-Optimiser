@@ -1,4 +1,4 @@
-use crate::{battle::state::{BattleState, CreatureState, RosterId, TEAM_SIZE}, model::{registry::Registry, speciesdata::Stat}};
+use crate::{battle::state::{TEAM_SIZE, battle_state::BattleState, creature_state::CreatureState, roster::RosterId}, model::{registry::Registry, speciesdata::Stat}};
 
 const ATTACK_SCALAR: f32 = 200.0;
 const SPEED_SCALAR: f32 = 200.0;
@@ -58,4 +58,14 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 		None => vec![0.0; MON_ENCODING_LEN]
 	}
 	
+}
+
+#[cfg(test)]
+mod tests {
+	//use super::*;
+
+	#[test]
+	fn test_whatever() {
+		// encoding is changing soon so there's no point...
+	}
 }

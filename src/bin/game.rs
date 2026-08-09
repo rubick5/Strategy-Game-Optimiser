@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use rand::{SeedableRng, rngs::StdRng};
-use strat_optimizer::{battle::state::{BattleState, CreatureState, Team}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
+use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
 	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);

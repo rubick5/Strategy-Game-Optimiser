@@ -1,6 +1,6 @@
 use rand::{RngCore, seq::IteratorRandom};
 
-use crate::{battle::state::{BattleState, PositionId, TEAM_SIZE, Team}, rl::{moveslot::{Moveslot, MAX_DECISION, MOVESLOT_COUNT}}};
+use crate::{battle::state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId}, rl::moveslot::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
 
 pub struct Mask {
 	pub allowed: [bool; MAX_DECISION]
@@ -16,8 +16,6 @@ impl Mask {
 				moveslots[i] = true;
 			}
 		}
-
-		
 
 		let mut switches = [true; TEAM_SIZE];
 

@@ -1,5 +1,4 @@
-use crate::battle::state::{PositionId, RosterId};
-use crate::model::pmove::MoveId;
+use crate::{battle::state::{field::PositionId, roster::RosterId}, model::pmove::MoveId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {

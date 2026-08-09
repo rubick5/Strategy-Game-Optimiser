@@ -1,9 +1,12 @@
 use rand::{Rng, RngCore};
 
-use crate::battle::state::{BattleState, Outcome, PositionId, RosterId};
+use crate::battle::state::battle_state::BattleState;
+use crate::battle::state::creature_state::CreatureState;
+use crate::battle::state::field::PositionId;
+use crate::battle::state::roster::RosterId;
+use crate::battle::state::{Outcome,};
 use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
-use crate::battle::state::CreatureState;
 use crate::model::pmove::MoveId;
 use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
@@ -170,7 +173,7 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 
 #[cfg(test)]
 mod tests {
-	use crate::{battle::{command::MoveCommand, state::PositionId}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
+	use crate::{battle::{command::MoveCommand}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
 	use super::*;
@@ -349,7 +352,6 @@ mod tests {
 
 	#[test]
 	fn switching_changes_the_active_mon() {
-		use crate::battle::state::RosterId;
 
 		let registry = test_registry();
 		let mut rng = rand::rng();

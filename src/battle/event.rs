@@ -1,4 +1,5 @@
-use crate::battle::state::{PositionId, RosterId};
+use crate::battle::state::{field::PositionId, roster::RosterId};
+
 
 pub enum Event {
 	DealDamage {
