@@ -87,7 +87,7 @@ where
 
 	}
 
-	pub fn backward(&mut self, mut current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32) {
+	pub fn backward_with_decay(&mut self, mut current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32, decay_amount: f32) {
 		self.forward(input_received); // sets the pre_activation cache for this decision made
 		
 		let ((output_layer, _), hidden_layers) =
@@ -95,15 +95,18 @@ where
 			.split_last_mut()
 			.expect("network needs at least one layer");
 
-		current_errors = output_layer.backward(&current_errors, learning_rate);
+		current_errors = output_layer.backward(&current_errors, learning_rate, decay_amount);
 
 		for (layer, pres) in hidden_layers.iter_mut().rev() {
 			current_errors.iter_mut().enumerate().for_each(|(i, x)|
 				*x = *x * (self.hidden_activation_prime)(pres[i])
 			);
-			current_errors = layer.backward(&current_errors, learning_rate);
+			current_errors = layer.backward(&current_errors, learning_rate, decay_amount);
 		}
+	}
 
+	pub fn backward(&mut self, current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32) {
+		self.backward_with_decay(current_errors, input_received, learning_rate, 0.0);
 	}
 }
 

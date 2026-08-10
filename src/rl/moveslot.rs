@@ -63,10 +63,7 @@ impl Moveslot {
 			},
 			Slot(n) => {
 				let creature = battle_state.get_mon(user).unwrap();
-				if *n > 1 {
-					println!("n: {}", n);
-					println!("creature: {:?}", creature);
-				}
+
 				let move_id = creature.moves[*n];
 				let mv = registry.get_move(move_id);
 				Command::MoveAction(

@@ -25,7 +25,7 @@ impl NeuronLayer {
 		self.most_recent_output.clone()
 	}
 
-	pub fn backward(&mut self, incoming_error: &[f32], learning_rate: f32) -> Vec<f32> {
+	pub fn backward(&mut self, incoming_error: &[f32], learning_rate: f32, weight_decay: f32) -> Vec<f32> {
 		// we need to calculate the error to give to the next row here before we update the weights
 
 		let mut d_prev: Vec<f32> = vec![0.0; self.neurons[0].weights.len()];
@@ -36,7 +36,7 @@ impl NeuronLayer {
 		}
 
 		for (index, neuron) in self.neurons.iter_mut().enumerate() {
-			neuron.backprop(incoming_error[index], &self.most_recent_input, learning_rate);
+			neuron.backprop(incoming_error[index], &self.most_recent_input, learning_rate, weight_decay);
 		}
 
 		d_prev
@@ -90,7 +90,7 @@ mod tests {
 	fn test_backprop() {
 		let mut layer = test_neuron_layer();
 		layer.forward(&vec![1.0, 2.0, 3.0]);
-		layer.backward(&vec![1.0, 2.0, 3.0], 0.5);
+		layer.backward(&vec![1.0, 2.0, 3.0], 0.5, 0.0);
 
 		assert_eq!(layer.neurons, vec![
 			Neuron {

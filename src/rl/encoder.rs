@@ -1,4 +1,4 @@
-use crate::{battle::state::{TEAM_SIZE, battle_state::BattleState, creature_state::CreatureState, roster::RosterId}, model::{registry::Registry, speciesdata::Stat}};
+use crate::{battle::state::{TEAM_SIZE, battle_state::BattleState, creature_state::CreatureState, non_volatile_status::NonVolatileStatus::Poison, roster::RosterId}, model::{registry::Registry, speciesdata::Stat}};
 
 const ATTACK_SCALAR: f32 = 200.0;
 const SPEED_SCALAR: f32 = 200.0;
@@ -7,7 +7,7 @@ const HP_SCALAR: f32 = 200.0;
 
 const MON_COUNT: usize = TEAM_SIZE + TEAM_SIZE;
 
-const MON_ENCODING_LEN: usize = 7;
+const MON_ENCODING_LEN: usize = 8;
 
 const FIELD_ENCODING_LEN: usize = 1;
 
@@ -42,6 +42,7 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 			let attack_stage = creature.stat_changes.attack as f32;
 			let defense_stage = creature.stat_changes.defense as f32;
 			let speed_stage = creature.stat_changes.speed as f32;
+			let is_poisoned = (creature.non_vol_status == Poison) as u32 as f32;
 
 			let v = vec![
 				attack / ATTACK_SCALAR,
@@ -51,6 +52,7 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 				attack_stage,
 				defense_stage,
 				speed_stage,
+				is_poisoned,
 			];
 			assert!(v.len() == MON_ENCODING_LEN);
 			v

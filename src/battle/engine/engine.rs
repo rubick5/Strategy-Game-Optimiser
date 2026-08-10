@@ -7,11 +7,12 @@ use crate::battle::state::roster::RosterId;
 use crate::battle::state::{Outcome,};
 use crate::battle::command::{Command, MoveCommand};
 use crate::battle::event::Event;
+use crate::model::effect::Effect::PoisonChance;
 use crate::model::pmove::MoveId;
 use crate::model::pmove::MoveType;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::{SpeciesDatum, Stat};
-use crate::battle::state::non_volatile_status::NonVolatileStatus;
+use crate::battle::state::non_volatile_status::NonVolatileStatus::{self, Poison};
 
 const SWITCHING_PRIO: i8 = 9;
 const MIN_PRIORITY: i8 = -7;
@@ -64,7 +65,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	}
 }
 
-fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &BattleState, events: &mut Vec<Event>) {
+fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &BattleState, events: &mut Vec<Event>, rng: &mut dyn RngCore) {
 	let mv = registry.get_move(move_command.move_id);
 	let user: &CreatureState = battle_state.get_mon(move_command.user).unwrap();
 
@@ -80,6 +81,17 @@ fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &B
 			amount: calculate_damage(user_attack, target_defense, mv.base_power),
 			target: target_pos
 		});
+
+		for effect in mv.effects.iter() {
+			match effect {
+				PoisonChance { chance: n } => {
+					if rng.random_range(1..=100) <= *n {
+						events.push(Event::ApplyNonVolStatus { status: Poison, target: target_pos })
+					}
+				}
+			}
+		}
+		
 	}
 }
 
@@ -123,12 +135,16 @@ pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Re
 			Some(Event::Switch { current, new }) => {
 				handle_switch_event(current, new, &mut battle_state);
 			},
+
+			Some(Event::ApplyNonVolStatus { status, target }) => {
+				battle_state.get_mut_mon(target).unwrap().non_vol_status = status;
+			}
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
 				match get_next_command(&mut commands, registry, &battle_state, rng) {
 					Some(Command::MoveAction(move_command)) => {
-						execute_move(move_command, registry, &battle_state, &mut events);
+						execute_move(move_command, registry, &battle_state, &mut events, rng);
 					},
 					Some(Command::Switch {current, new}) => 
 						events.push(Event::Switch { current, new }),

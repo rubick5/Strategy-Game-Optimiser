@@ -2,6 +2,7 @@ use crate::rl::{agent::{bot_agent::{BASELINE_LEARNING_RATE, BotAgent}, train_con
 
 const DAMPING_CONSTANT: f32 = 0.95;
 const BATCH_STANDARD_CONST: f32 = 0.05;
+const WEIGHT_DECAY_AMOUNT: f32 = 0.999;
 
 pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig) {
 	if batch.is_empty() {
@@ -14,7 +15,7 @@ pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32
 
 	let initial_advantages_squared_mean: f32 = initial_advantages.iter().map(|f| f * f).sum::<f32>() / initial_advantages.len() as f32;
 	let initial_advantages_sigma: f32 = 
-		(initial_advantages_squared_mean - initial_advantages_mean * initial_advantages_mean).sqrt();
+		(initial_advantages_squared_mean - initial_advantages_mean * initial_advantages_mean).max(0.0).sqrt();
 
 	let standardised: Vec<f32> = (0..initial_advantages.len()).map(|index| {
 		(initial_advantages[index] - initial_advantages_mean) / (initial_advantages_sigma + BATCH_STANDARD_CONST)
@@ -30,12 +31,12 @@ pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32
 		for Step { encoding, move_chosen, probabilities } in played_battle.steps.iter() {
 			agent.backprop(
 				*move_chosen,
-				played_battle.battle_reward,
 				gt,
 				&encoding,
 				&probabilities,
 				train_config.learning_rate,
-				train_config.entropy_reward_rate
+				train_config.entropy_reward_rate,
+				WEIGHT_DECAY_AMOUNT,
 			);
 			gt = gt * DAMPING_CONSTANT;
 		}

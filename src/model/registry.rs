@@ -1,3 +1,4 @@
+use crate::model::effect::Effect;
 use crate::model::pmove::MoveTargeting;
 use crate::model::pmove::MoveType;
 use crate::model::speciesdata::SpeciesDatum;
@@ -31,10 +32,10 @@ impl Registry {
 	
 		let fat_defender = SpeciesDatum {
 			name: String::from("fat_defender"),
-			base_hp: 120,
+			base_hp: 1000,
 			species_id: SpeciesId(1),
 			attack: 80,
-			defense: 80,
+			defense: 1000,
 			speed: 30,
 		};
 
@@ -58,9 +59,19 @@ impl Registry {
 			base_prio: 1,
 		};
 
+		let poison_attack: PMove = PMove {
+			name: String::from("poison attack"),
+			move_type: MoveType::Status,
+			move_targeting: MoveTargeting::Single,
+			move_id: MoveId(2),
+			base_power: 0,
+			effects: vec![Effect::PoisonChance { chance: 100 }],
+			base_prio: 0,
+		};
+
 		Registry {
 			species_data: vec![frail_attacker, fat_defender],
-			moves: vec![tackle, quick_attack],
+			moves: vec![tackle, quick_attack, poison_attack],
 		}
 	}
 }

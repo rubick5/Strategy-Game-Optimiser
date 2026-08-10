@@ -1,4 +1,4 @@
-use crate::battle::state::{field::PositionId, roster::RosterId};
+use crate::battle::state::{field::PositionId, non_volatile_status::NonVolatileStatus, roster::RosterId};
 
 
 pub enum Event {
@@ -9,5 +9,9 @@ pub enum Event {
 	Switch {
 		current: PositionId,
 		new: RosterId,
+	},
+	ApplyNonVolStatus {
+		status: NonVolatileStatus,
+		target: PositionId,
 	}
 }
