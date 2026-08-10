@@ -137,7 +137,7 @@ impl BotAgent
 	/**
 	 * Learns from previous mistakes or successes. Needs a bunch of weird arguments for the maths to work out.
 	 */
-	pub fn backprop(&mut self, move_slot: Moveslot, battle_reward: f32, gt: f32, encoding: &[f32], last_probabilities: &[f32], learning_rate: f32, entropy_rate: f32) {
+	pub fn backprop(&mut self, move_slot: Moveslot, gt: f32, encoding: &[f32], last_probabilities: &[f32], learning_rate: f32, entropy_rate: f32, weight_decay: f32) {
 		//let encoding = encoder::encode(battle_state, registry);
 		//let mask = Mask::from_battle_state(team, pos, battle_state);
 
@@ -152,9 +152,9 @@ impl BotAgent
 			} else {
 				entropy_rate * last_probabilities[index] * (last_probabilities[index].ln() + prob_entropy)
 			};
-			(battle_reward - self.baseline) * gt * (last_probabilities[index] - indicator) + entropy_reward
+			gt * (last_probabilities[index] - indicator) + entropy_reward
 		}).collect();
 
-		self.net.backward(current_errors, &encoding, learning_rate)
+		self.net.backward_with_decay(current_errors, &encoding, learning_rate, weight_decay);
 	}
 }

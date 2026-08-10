@@ -98,7 +98,7 @@ pub fn play_out_battle(
 				return PlayedBattle { steps: actions_and_states, battle_reward: -1.0 };
 			}
 			engine::StepRequest::Finished(Outcome::Draw) => {
-				return PlayedBattle { steps: actions_and_states, battle_reward: 0.0 };
+				return PlayedBattle { steps: actions_and_states, battle_reward: -0.1 };
 			}
 		}
 	}

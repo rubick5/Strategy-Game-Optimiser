@@ -7,10 +7,10 @@ pub struct SpeciesId(pub u32);
 pub struct SpeciesDatum {
 	pub name: String,
 	pub species_id: SpeciesId,
-	pub base_hp: u8,
-	pub attack: u8,
-	pub defense: u8,
-	pub speed: u8,
+	pub base_hp: u32,
+	pub attack: u32,
+	pub defense: u32,
+	pub speed: u32,
 }
 
 pub enum Stat {

@@ -4,38 +4,40 @@ use crate::{battle::state::{battle_state::BattleState, creature_state::CreatureS
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;
+pub const LEARNING_RATE: f32 = 0.05;
+pub const ENTROPY_REWARD_RATE: f32 = 0.05;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
-const BATCH_COUNT: usize = 3000;
-const BATCH_SIZE: usize = 32;
+const BATCH_COUNT: usize = 10_000;
+const BATCH_SIZE: usize = 64;
 
 const BATCH_PRINT_FREQ: usize = 50;
 const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
 
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
-	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
 }
 
 pub fn battle_state_1hp(registry: &Registry) -> BattleState {
-	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let _ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let _ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let _ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let _ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let _ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let _ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps00], vec![ps1_1hp], vec![0, 1])
 }
@@ -43,8 +45,8 @@ pub fn battle_state_1hp(registry: &Registry) -> BattleState {
 fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_batches: usize) {
 	let batch_num_f32 = batch_num as f32;
 	let total_batches_f32 = total_batches as f32;
-	train_config.learning_rate = train_config.learning_rate * (total_batches_f32 - batch_num_f32) / total_batches_f32;
-	train_config.entropy_reward_rate = train_config.entropy_reward_rate / 2.0;
+	train_config.learning_rate = LEARNING_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
+	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
 }
 
 
@@ -59,8 +61,8 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 	let mut max_battles_won: i32 = 0;
 
 	let mut train_config = TrainConfig {
-		learning_rate: 0.05,
-		entropy_reward_rate: 0.05,
+		learning_rate: LEARNING_RATE,
+		entropy_reward_rate: ENTROPY_REWARD_RATE,
 		baseline_learning_rate: BASELINE_LEARNING_RATE
 	};
 	
