@@ -4,14 +4,14 @@ use rand::{SeedableRng, rngs::StdRng};
 use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
-	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
-	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1)]);
+	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
 
 	let mut ps00 = ps0.clone();
 	ps00.current_hp = 1;
-	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
-	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1)]);
+	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
 	ps1_1hp.current_hp = 1;
 	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
 }

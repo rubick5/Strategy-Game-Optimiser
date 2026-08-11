@@ -75,7 +75,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 	let battle_states: Vec<BattleState> = vec![
 		start_battle_state(&registry),
 		start_battle_state(&registry),
-		battle_state_1hp(&registry),
+		//battle_state_1hp(&registry),
 	];
 	for batch_num in 0..BATCH_COUNT {
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();

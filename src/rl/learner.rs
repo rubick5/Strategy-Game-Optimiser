@@ -2,7 +2,7 @@ use crate::rl::{agent::{bot_agent::{BASELINE_LEARNING_RATE, BotAgent}, train_con
 
 const DAMPING_CONSTANT: f32 = 0.95;
 const BATCH_STANDARD_CONST: f32 = 0.05;
-const WEIGHT_DECAY_AMOUNT: f32 = 0.999;
+const WEIGHT_DECAY_AMOUNT: f32 = 0.99999;
 
 pub fn learn_from_batch(agent: &mut BotAgent, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig) {
 	if batch.is_empty() {
