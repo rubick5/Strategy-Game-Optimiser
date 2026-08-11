@@ -23,7 +23,6 @@ impl Team {
 }
 
 pub enum Outcome {
-	Side0Wins,
-	Side1Wins,
+	Win { team: Team },
 	Draw,
 }

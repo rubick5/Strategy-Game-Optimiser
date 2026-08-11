@@ -36,7 +36,7 @@ impl Neuron {
 	pub fn backprop(&mut self, error: f32, input_given: &[f32], learning_rate: f32, decay_amount: f32) {
 		for index in 0..self.weights.len() {
 			self.weights[index] = (self.weights[index] - (learning_rate * error * input_given[index]).clamp(-CLIP, CLIP)).clamp(-10.0, 10.0);
-			self.weights[index] = self.weights[index] * learning_rate * decay_amount;
+			self.weights[index] = self.weights[index] * decay_amount;
 		}
 		self.bias = (self.bias - (learning_rate * error)).clamp(-CLIP, CLIP);
 	}

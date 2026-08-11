@@ -24,7 +24,6 @@ impl CreatureState {
 	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {
 		let species_datum = registry.get_species_data(species_id);
 		Self::from_species_data(species_datum, moves)
-		
 	}
 	pub fn get_stat(&self, stat: Stat, registry: &Registry) -> u32 {
 		let species_data = registry.get_species_data(self.species_id);

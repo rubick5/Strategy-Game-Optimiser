@@ -31,8 +31,8 @@ impl BattleState {
 		}
 		match (side0_alive, side1_alive) {
 			(true, true) => None,
-			(true, false) => Some(Outcome::Side0Wins),
-			(false, true) => Some(Outcome::Side1Wins),
+			(true, false) => Some(Outcome::Win { team: Team::Zero }),
+			(false, true) => Some(Outcome::Win { team: Team::One }),
 			(false, false) => Some(Outcome::Draw)
 
 		}

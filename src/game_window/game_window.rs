@@ -1,7 +1,7 @@
 use eframe::egui;
 use rand::RngCore;
 
-use crate::{battle::{engine::engine, state::{Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId}}, model::registry::Registry, rl::{agent::Agent, encoder, mask::Mask, moveslot::Moveslot}};
+use crate::{battle::{engine::engine, state::{Outcome, Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId}}, model::registry::Registry, rl::{agent::Agent, encoder, mask::Mask, moveslot::Moveslot}};
 
 
 pub struct BattleApp<R>
@@ -21,11 +21,37 @@ where
 	R: RngCore
 {
 	fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+		self.show_battle_state(ui);
+
+		match self.battle.outcome() {
+			Some(Outcome::Win { team }) if team == self.player_team => {
+				ui.label("you win!!");
+			},
+			Some(Outcome::Win {team: _}) => {
+				ui.label("you lose...");
+			},
+			Some(Outcome::Draw) => {
+				ui.label("it's a draw?");
+			}
+			None => {
+				self.display_move_options(ui);
+			}
+		}
+		
+	}
+}
+
+impl <R> BattleApp<R>
+where
+	R: RngCore
+{
+
+	fn display_move_options(&mut self, ui: &mut egui::Ui) {
 		let player_position = self.battle.field.team_positions(&self.player_team)[0];
 		let agent_position = self.battle.field.team_positions(&self.player_team.other())[0];
 
-		self.show_battle_state(ui);
 		let mut move_selected: Option<Moveslot> = None;
+
 		egui::Grid::new("moves").show(ui, |ui| {
 			move_selected = self.generate_moveslot_buttons(ui, player_position);
 		});
@@ -43,12 +69,6 @@ where
 			self.battle = step_result.battle_state;
 		}
 	}
-}
-
-impl <R> BattleApp<R>
-where
-	R: RngCore
-{
 
 	fn display_creature_state(&self, ps: &CreatureState) -> String {
 		let species_data = self.registry.get_species_data(ps.species_id);
