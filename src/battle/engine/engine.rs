@@ -88,7 +88,8 @@ fn execute_move(move_command: MoveCommand, registry: &Registry, battle_state: &B
 					if rng.random_range(1..=100) <= *n {
 						events.push(Event::ApplyNonVolStatus { status: Poison, target: target_pos })
 					}
-				}
+				},
+				_ => {}
 			}
 		}
 		

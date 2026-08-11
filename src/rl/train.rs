@@ -9,8 +9,8 @@ pub const ENTROPY_REWARD_RATE: f32 = 0.05;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
-const BATCH_COUNT: usize = 10_000;
-const BATCH_SIZE: usize = 64;
+const BATCH_COUNT: usize = 2_000;
+const BATCH_SIZE: usize = 24;
 
 const BATCH_PRINT_FREQ: usize = 50;
 const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
@@ -70,6 +70,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 		Box::new(RandomAgent{}),
 		Box::new(SpamAgent{ index: 1 }),
 		Box::new(SpamAgent{index: 0}),
+		Box::new(SpamAgent{index: 2}),
 		];
 
 	let battle_states: Vec<BattleState> = vec![
@@ -107,7 +108,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore) {
 	final_agent_checks(&mut best_agent, &registry);
 
 	println!("Saving final agent to file: agent.json...");
-	agent.to_file("agent.json").unwrap() // goofy unwrap
+	best_agent.to_file("agent.json").unwrap() // goofy unwrap
 }
 
 fn final_agent_checks(agent: &mut BotAgent, registry: &Registry) {

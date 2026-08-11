@@ -91,10 +91,10 @@ pub fn play_out_battle(
 					step_request,
 				} = engine::step(battle, commands, registry, rng);
 			}
-			engine::StepRequest::Finished(Outcome::Side0Wins) => {
+			engine::StepRequest::Finished(Outcome::Win { team: Team::Zero }) => {
 				return PlayedBattle { steps: actions_and_states, battle_reward: 1.0 };
 			}
-			engine::StepRequest::Finished(Outcome::Side1Wins) => {
+			engine::StepRequest::Finished(Outcome::Win { team: Team::One }) => {
 				return PlayedBattle { steps: actions_and_states, battle_reward: -1.0 };
 			}
 			engine::StepRequest::Finished(Outcome::Draw) => {
