@@ -52,7 +52,8 @@ where
 
 	fn display_creature_state(&self, ps: &CreatureState) -> String {
 		let species_data = self.registry.get_species_data(ps.species_id);
-		format!("{}: HP {} out of {}", species_data.name, ps.current_hp, species_data.base_hp)
+
+		format!("{}: HP {} out of {}, with status: {}", species_data.name, ps.current_hp, species_data.base_hp, ps.non_vol_status)
 	}
 	fn display_team(&self, team: &Team, ui: &mut egui::Ui) {
 		for m in self.battle.field.team(team) {
