@@ -18,7 +18,7 @@ impl CreatureState {
 			current_hp: species_data.base_hp as u32,
 			max_hp: species_data.base_hp as u32,
 			moves,
-			non_vol_status: NonVolatileStatus::None,
+			non_vol_status: NonVolatileStatus::NoStatus,
 		}
 	}
 	pub fn from_species(registry: &Registry, species_id: SpeciesId, moves: Vec<MoveId>) -> Self {

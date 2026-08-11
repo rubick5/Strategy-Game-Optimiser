@@ -180,7 +180,7 @@ fn queue_non_volatile_status(bs: &mut BattleState, queue: &mut Vec<Event>) {
 		let mut_mon = bs.get_mut_mon(pos);
 		if let Some(m) = mut_mon {
 			match m.non_vol_status {
-				NonVolatileStatus::None => {},
+				NonVolatileStatus::NoStatus => {},
 				NonVolatileStatus::Poison => {
 					queue.push(Event::DealDamage { amount: m.max_hp / 8, target: pos });
 				},
