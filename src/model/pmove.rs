@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::effect::Effect};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MoveId(pub u32);
 
 pub enum MoveType {

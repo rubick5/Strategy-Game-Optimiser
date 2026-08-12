@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{battle::state::{non_volatile_status::NonVolatileStatus, stat_stages::StatStages}, model::{pmove::MoveId, registry::Registry, speciesdata::{SpeciesDatum, SpeciesId, Stat}}};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatureState {
 	pub species_id: SpeciesId,
 	pub stat_changes: StatStages,

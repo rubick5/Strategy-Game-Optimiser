@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::battle::state::{TEAM_SIZE, Team, creature_state::CreatureState};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RosterId(pub usize);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Roster {
 	mons: Vec<Option<CreatureState>>,   // Option so an empty/fainted slot still exists
 }

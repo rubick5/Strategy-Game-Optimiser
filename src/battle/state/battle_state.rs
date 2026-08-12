@@ -1,7 +1,7 @@
 use crate::battle::state::{Outcome, Team, creature_state::CreatureState, field::{Field, PositionId}, roster::{Roster, RosterId}};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BattleState {
 	pub roster: Roster,
 	pub field: Field,
