@@ -89,10 +89,9 @@ pub struct StepResult {
 	pub step_request: StepRequest,
 }
 
-pub fn step(mut battle_state: BattleState, commands: Vec<Command>, registry: &Registry, rng: &mut dyn RngCore) -> StepResult {
-	let mut commands: Vec<Command> = commands.clone();
+pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry: &Registry, rng: &mut dyn RngCore) -> StepResult {
 	let mut events: Vec<Event> = Vec::new();
-	let mut fainted: Vec<PositionId> = vec![];
+	let mut fainted: Vec<PositionId> = Vec::new();
 	let mut non_vol_status_handled = false;
 	loop {
 		match events.pop() {
