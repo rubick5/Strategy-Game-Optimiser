@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Copy, Clone)]
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SpeciesId(pub u32);
 
 #[derive(Clone)]

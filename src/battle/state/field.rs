@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::battle::state::{Team, roster::RosterId};
 use std::fmt::Display;
 
@@ -28,7 +30,7 @@ impl Display for PositionId {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
 	mons: Vec<RosterId>,
 }
