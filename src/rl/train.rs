@@ -49,8 +49,6 @@ fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_ba
 	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
 }
 
-
-
 pub fn main_loop(mut rng: &mut dyn RngCore) {
 	let registry = Registry::load();
 	let mut agent: BotAgent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
