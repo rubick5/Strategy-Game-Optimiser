@@ -55,7 +55,7 @@ pub fn main_loop(mut rng: &mut dyn RngCore, battle_state_paths: &[&str]) -> Resu
 	for batch_num in 0..BATCH_COUNT {
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();
 		for _ in 0..BATCH_SIZE {
-			let opponent = opponents.choose_mut(rng).unwrap();
+			let opponent = opponents.choose_mut(rng).ok_or("no opponents available...")?;
 			let battle: BattleState = battle_states.choose(rng).ok_or("no battle states available....")?.clone();
 
 			let played_battle = play_out_battle(battle, &registry, &mut agent, opponent, rng);
@@ -89,7 +89,6 @@ fn final_agent_checks(agent: &mut BotAgent, registry: &Registry, battle_state: &
 	let agent_mask_normal = Mask::from_battle_state(&Team::Zero, PositionId(0), battle_state);
 
 	println!("agent: {:?}", agent.just_logits(&encoder::encode(battle_state, registry, false), &agent_mask_normal));
-
 }
 
 
