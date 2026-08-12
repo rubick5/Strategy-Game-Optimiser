@@ -30,7 +30,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 		let (prio, speed) = match command {
 			Command::MoveAction(move_command) => {
 				let mv = registry.get_move(move_command.move_id);
-				let creature = battle_state.get_mon(move_command.user).unwrap();
+				let creature = battle_state.get_mon(move_command.user)?;
 				if creature.current_hp <= 0 {
 					continue;
 				}
@@ -39,7 +39,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 				(prio, speed)
 			}
 			Command::Switch {current, new: _} => {
-				let speed = battle_state.get_mon(*current).unwrap().get_stat(Stat::Speed, &registry);
+				let speed = battle_state.get_mon(*current)?.get_stat(Stat::Speed, &registry);
 				(SWITCHING_PRIO, speed)
 			}
 		};
