@@ -1,10 +1,10 @@
 use crate::battle::state::{Outcome, Team, creature_state::CreatureState, field::{Field, PositionId}, roster::{Roster, RosterId}};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct BattleState {
 	pub roster: Roster,
 	pub field: Field,
-	pub switch_needed: Vec<PositionId>,
 }
 
 impl BattleState {
@@ -12,7 +12,6 @@ impl BattleState {
 		BattleState {
 			field: Field::from(field),
 			roster: Roster::from(team0, team1),
-			switch_needed: vec![],
 		}
 	}
 

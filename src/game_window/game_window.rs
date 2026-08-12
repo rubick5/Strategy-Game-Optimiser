@@ -65,6 +65,7 @@ where
 				agent_moveslot.to_command(agent_position, &self.battle, &self.registry),
 				moveslot.to_command(player_position, &self.battle, &self.registry),
 			];
+			// TODO: HANDLE STEP RESULT FOR REPLACEMENTS SO WE DONT GET HIT ON SWITCH IN
 			let step_result = engine::step(self.battle.clone(), commands, &self.registry, &mut self.rng);
 			self.battle = step_result.battle_state;
 		}
