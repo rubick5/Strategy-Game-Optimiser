@@ -1,3 +1,5 @@
+use std::{error::Error, fs::File, io::Write as _};
+
 use crate::battle::state::{Outcome, Team, creature_state::CreatureState, field::{Field, PositionId}, roster::{Roster, RosterId}};
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +10,18 @@ pub struct BattleState {
 }
 
 impl BattleState {
+	pub fn from_file(file_name: &str) -> Result<Self, Box<dyn Error>> {
+		let bytes = std::fs::read(file_name)?;
+		let saved = serde_json::from_slice(&bytes)?;
+		Ok(saved)
+	}
+
+	pub fn to_file(&self, target: &str) -> Result<(), Box<dyn Error>> {
+		let bytes = serde_json::to_string(&self)?;
+		let mut file = File::create(target)?;
+		Ok(file.write_all(bytes.as_bytes())?)
+	}
+	
 	pub fn from(team0: Vec<CreatureState>, team1: Vec<CreatureState>, field: Vec<usize>) -> Self {
 		BattleState {
 			field: Field::from(field),
