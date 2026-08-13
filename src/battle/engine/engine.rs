@@ -82,7 +82,7 @@ fn handle_switch_event(current: PositionId, new: RosterId, battle_state: &mut Ba
 	battle_state.field[current] = new;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum StepRequest {
 	NeedsActions,
 	NeedsReplacements(Vec<PositionId>),
@@ -304,6 +304,7 @@ mod tests {
 		})
 	}
 
+	// this test will need changes when it comes to the actual damage formula
 	#[test]
 	fn uses_correct_stats_for_damage_calc() {
 		let registry = test_registry();
@@ -349,6 +350,7 @@ mod tests {
 
 		let mut v = vec![fat_uses_tackle(), frail_uses_tackle()];
 
+		// get_next_command should fetch the frail's tackle before the fat's, because it's faster
 		assert!(get_next_command(&mut v, &registry, &battle_state, &mut rng) == Some(frail_uses_tackle()));
 		assert!(get_next_command(&mut v, &registry, &battle_state, &mut rng) == Some(fat_uses_tackle()));
 
@@ -413,18 +415,52 @@ mod tests {
 	fn requests_replacement_when_mon_faints() {
 		let mut rng = rand::rng();
 		let mut battle_state = test_battle_state();
+
+		// set the position 0 creature's hp to 1
 		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 1;
+		// hit the position 0 creature with a really strong attack
 		let attack_command = Command::MoveAction(MoveCommand {
 			move_id: MoveId(2),
-			targets: vec![PositionId(1)],
-			user: PositionId(0),
+			targets: vec![PositionId(0)],
+			user: PositionId(1),
 		});
+		// since there is still one creature left on team 0, we should request replacements rather
+		// than ending the game...
 		let StepResult {
 			battle_state,
 			step_request 
 		} = step(battle_state, vec![attack_command], &test_registry(), &mut rng);
-		//println!("{:?}", step_request);
-		//println!("{:#?}", battle_state);
+
+		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().current_hp, 0); // it should be ko'd
+		let v = vec![PositionId(0)];
+		assert_eq!(step_request, StepRequest::NeedsReplacements(v)); // we should need replacement
+	}
+
+	#[test]
+	fn poison_ko_requests_replacement() {
+		let mut rng = rand::rng();
+		let registry = test_registry();
+		let mut battle_state = test_battle_state();
+
+		// Poison position 0's creature (the frail_attacker, roster 0) and drop it low
+		// enough that end-of-turn poison will KO it.
+		// frail base_hp = 80, so poison ticks max_hp/8 = 10; hp = 1 guarantees a KO.
+		{
+			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+			mon.non_vol_status = NonVolatileStatus::Poison;
+			mon.current_hp = 1;
+		}
+
+		// No attacks — pass empty commands so the turn goes straight to the
+		// end-of-turn phase, and the KO is caused purely by poison, nothing else.
+		let StepResult { battle_state, step_request } =
+			step(battle_state, vec![], &registry, &mut rng);
+
+		// The poisoned creature should have fainted from the poison tick...
+		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().current_hp, 0);
+
+		// ...and since team0 still has a live benched creature (roster 2), the engine
+		// must ask for a replacement rather than declaring the battle finished.
 		assert!(matches!(step_request, StepRequest::NeedsReplacements(_)));
 	}
 }
