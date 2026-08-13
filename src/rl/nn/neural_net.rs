@@ -106,7 +106,7 @@ where
 	}
 
 	pub fn backward(&mut self, current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32) {
-		self.backward_with_decay(current_errors, input_received, learning_rate, 0.0);
+		self.backward_with_decay(current_errors, input_received, learning_rate, 1.0);
 	}
 }
 

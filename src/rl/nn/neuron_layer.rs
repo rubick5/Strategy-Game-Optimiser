@@ -90,7 +90,7 @@ mod tests {
 	fn test_backprop() {
 		let mut layer = test_neuron_layer();
 		layer.forward(&vec![1.0, 2.0, 3.0]);
-		layer.backward(&vec![1.0, 2.0, 3.0], 0.5, 0.0);
+		layer.backward(&vec![1.0, 2.0, 3.0], 0.5, 1.0);
 
 		assert_eq!(layer.neurons, vec![
 			Neuron {
