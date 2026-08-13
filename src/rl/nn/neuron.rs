@@ -38,7 +38,7 @@ impl Neuron {
 			self.weights[index] = (self.weights[index] - (learning_rate * error * input_given[index]).clamp(-CLIP, CLIP)).clamp(-10.0, 10.0);
 			self.weights[index] = self.weights[index] * decay_amount;
 		}
-		self.bias = (self.bias - (learning_rate * error)).clamp(-CLIP, CLIP);
+		self.bias -= (learning_rate * error).clamp(-CLIP, CLIP);
 	}
 }
 
@@ -78,7 +78,7 @@ mod tests {
 		let error = 5.0;
 		let input_given = vec![1.0, 2.0, 1.0];
 
-		n.backprop(error, &input_given, 0.5, 0.0);
+		n.backprop(error, &input_given, 0.5, 1.0);
 
 		assert_eq!(n.weights, vec![0.9, 1.9, 2.9]);
 		assert_eq!(n.bias, -0.1);
