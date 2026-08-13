@@ -20,6 +20,7 @@ const MIN_SPEED: u32 = 0;
 
 fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_state: &BattleState, rng: &mut dyn RngCore) -> Option<Command> {
 	if commands.is_empty() {
+		//println!("empty commands....");
 		return None;
 	}
 	// we need the thing with the highest priority and the highest speed!
@@ -27,6 +28,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	let mut highest_speed = MIN_SPEED;
 	let mut highest_command_index: Option<usize> = None;
 	for (index, command) in commands.iter().enumerate() {
+		//println!("doing command: {:?}", command);
 		let (prio, speed) = match command {
 			Command::MoveAction(move_command) => {
 				let mv = registry.get_move(move_command.move_id);
@@ -36,6 +38,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 				}
 				let prio = mv.base_prio;
 				let speed = creature.get_stat(Stat::Speed, &registry);
+				//println!("prio, speed: {}, {}", prio, speed);
 				(prio, speed)
 			}
 			Command::Switch {current, new: _} => {
@@ -61,6 +64,7 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	if let Some(i) = highest_command_index {
 		Some(commands.remove(i))
 	} else {
+		//println!("returning none....");
 		None
 	}
 }
@@ -78,6 +82,7 @@ fn handle_switch_event(current: PositionId, new: RosterId, battle_state: &mut Ba
 	battle_state.field[current] = new;
 }
 
+#[derive(Debug)]
 pub enum StepRequest {
 	NeedsActions,
 	NeedsReplacements(Vec<PositionId>),
@@ -96,6 +101,7 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	loop {
 		match events.pop() {
 			Some(Event::DealDamage { amount, target}) => {
+				//println!("dealing {} to {:?}", amount, target);
 				if let Some(pos) = handle_damage_event(amount, target, &mut battle_state) {
 					fainted.push(pos);
 				}
@@ -113,6 +119,7 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 				// deal with atm!!)
 				match get_next_command(&mut commands, registry, &battle_state, rng) {
 					Some(Command::MoveAction(move_command)) => {
+						//println!("executing move: {:?}", move_command);
 						execute_move(move_command, registry, &battle_state, &mut events, rng);
 					},
 					Some(Command::Switch {current, new}) => 
@@ -129,7 +136,7 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 			}
 		}
 	}
-
+	//println!("fainted: {:?}", fainted);
 	let step_request =
 		if let Some(outcome) = battle_state.outcome() {
 			StepRequest::Finished(outcome)
@@ -259,10 +266,12 @@ mod tests {
 
 	fn test_battle_state() -> BattleState {
 		let team0: Vec<CreatureState> = vec![
-			CreatureState::from_species_data(&frail_attacker(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&frail_attacker(), vec![MoveId(0), MoveId(1), MoveId(2)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1), MoveId(2)]),
 		];
 		let team1: Vec<CreatureState> = vec![
-			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1), MoveId(2)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1), MoveId(2)]),
 		];
 		BattleState::from(
 			team0,
@@ -378,6 +387,7 @@ mod tests {
 		];
 		let team1 = vec![
 			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1)]),
 		];
 		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
 
@@ -403,13 +413,18 @@ mod tests {
 	fn requests_replacement_when_mon_faints() {
 		let mut rng = rand::rng();
 		let mut battle_state = test_battle_state();
-		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 0;
+		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 1;
 		let attack_command = Command::MoveAction(MoveCommand {
 			move_id: MoveId(2),
 			targets: vec![PositionId(1)],
 			user: PositionId(0),
 		});
-		let step_request = step(battle_state, vec![attack_command], &test_registry(), &mut rng).step_request;
+		let StepResult {
+			battle_state,
+			step_request 
+		} = step(battle_state, vec![attack_command], &test_registry(), &mut rng);
+		//println!("{:?}", step_request);
+		//println!("{:#?}", battle_state);
 		assert!(matches!(step_request, StepRequest::NeedsReplacements(_)));
 	}
 }
