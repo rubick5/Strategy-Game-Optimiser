@@ -7,7 +7,7 @@ pub mod non_volatile_status;
 
 pub const TEAM_SIZE: usize = 6;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Team {
 	Zero,
 	One
@@ -22,6 +22,7 @@ impl Team {
 	}
 }
 
+#[derive(Debug)]
 pub enum Outcome {
 	Win { team: Team },
 	Draw,
