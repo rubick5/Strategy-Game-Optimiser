@@ -22,7 +22,7 @@ impl Team {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Outcome {
 	Win { team: Team },
 	Draw,
