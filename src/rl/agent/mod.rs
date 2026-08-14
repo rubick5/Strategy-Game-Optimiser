@@ -2,6 +2,7 @@ pub mod train_config;
 pub mod bot_agent;
 pub mod random_agent;
 pub mod spam_agent;
+pub mod ppo_agent;
 
 use crate::rl::{mask::Mask, moveslot::Moveslot};
 use rand::RngCore;
