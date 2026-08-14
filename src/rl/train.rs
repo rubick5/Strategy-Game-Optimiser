@@ -11,8 +11,8 @@ pub const ENTROPY_REWARD_RATE: f32 = 0.05;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
-const BATCH_COUNT: usize = 2_000;
-const BATCH_SIZE: usize = 24;
+const BATCH_COUNT: usize = 1_000;
+const BATCH_SIZE: usize = 64;
 
 const BATCH_PRINT_FREQ: usize = 50;
 const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
