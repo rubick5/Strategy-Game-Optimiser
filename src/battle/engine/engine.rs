@@ -193,7 +193,7 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 
 #[cfg(test)]
 mod tests {
-	use crate::{battle::{command::MoveCommand}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
+	use crate::{battle::{command::MoveCommand, state::Team}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	use crate::battle::engine::calculate_damage::calculate_damage;
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
@@ -442,14 +442,12 @@ mod tests {
 		let registry = test_registry();
 		let mut battle_state = test_battle_state();
 
-		// Poison position 0's creature (the frail_attacker, roster 0) and drop it low
+		// poison position 0's creature (the frail_attacker, roster 0) and drop it low
 		// enough that end-of-turn poison will KO it.
 		// frail base_hp = 80, so poison ticks max_hp/8 = 10; hp = 1 guarantees a KO.
-		{
-			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
-			mon.non_vol_status = NonVolatileStatus::Poison;
-			mon.current_hp = 1;
-		}
+		let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+		mon.non_vol_status = NonVolatileStatus::Poison;
+		mon.current_hp = 1;
 
 		// No attacks — pass empty commands so the turn goes straight to the
 		// end-of-turn phase, and the KO is caused purely by poison, nothing else.
@@ -462,5 +460,39 @@ mod tests {
 		// ...and since team0 still has a live benched creature (roster 2), the engine
 		// must ask for a replacement rather than declaring the battle finished.
 		assert!(matches!(step_request, StepRequest::NeedsReplacements(_)));
+	}
+
+	#[test]
+	fn poison_ko_of_last_creature_finishes_battle() {
+		let mut rng = rand::rng();
+		let registry = test_registry();
+
+		// team0 has ONLY ONE creature — so when it dies, there's nobody to replace it.
+		let team0 = vec![
+			CreatureState::from_species_data(&frail_attacker(), vec![MoveId(0), MoveId(1), MoveId(2)]),
+		];
+		let team1 = vec![
+			CreatureState::from_species_data(&fat_defender(), vec![MoveId(0), MoveId(1), MoveId(2)]),
+		];
+		let mut battle_state = BattleState::from(team0, team1, vec![0, 1]);
+
+		// Poison team0's only creature and weaken it so end-of-turn poison KOs it.
+		{
+			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+			mon.non_vol_status = NonVolatileStatus::Poison;
+			mon.current_hp = 1;
+		}
+
+		// No attacks — the end-of-turn poison tick is the only thing that happens.
+		let StepResult { battle_state, step_request } =
+			step(battle_state, vec![], &registry, &mut rng);
+
+		// The creature fainted from poison...
+		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().current_hp, 0);
+
+		// ...and because it was team0's LAST creature, the battle must be FINISHED (team1 wins),
+		// NOT NeedsReplacements. This is the key guard: outcome() has to be checked before the
+		// faint list, otherwise the engine would try to request a replacement for a wiped side.
+		assert_eq!(step_request, StepRequest::Finished(Outcome::Win { team: Team::One }));
 	}
 }
