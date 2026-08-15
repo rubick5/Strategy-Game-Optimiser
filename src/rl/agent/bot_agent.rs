@@ -1,10 +1,9 @@
-use crate::rl::{agent::{Agent}, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
+use crate::rl::{agent::Agent, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
 use rand::{Rng, RngCore};
 
 use std::{error::Error, f32::consts::E};
 
 
-pub const RELU_LEAK: f32 = 0.01;
 
 
 pub const ENTROPY_REWARD_RATE: f32 = 0.01;
@@ -22,13 +21,7 @@ fn softmax(logits: &[f32]) -> Vec<f32> {
 	logits.iter().map(|x| E.powf(*x - m) / divisor).collect()
 }
 
-pub fn relu(x: f32) -> f32 {
-	if x < 0.0 { RELU_LEAK * x } else { x }
-}
 
-pub fn relu_prime(x: f32) -> f32 {
-	if x < 0.0 { RELU_LEAK } else { 1.0 }
-}
 /**
  * Finds the largest element in a slice of f32s
  * 
@@ -77,7 +70,7 @@ impl Agent for BotAgent {
 impl BotAgent
 {
 	pub fn relu_from_file(file_name: &str) -> Result<Self, Box<dyn Error>> {
-		Self::from_file(file_name, relu, relu_prime)
+		Self::from_file(file_name, super::relu, super::relu_prime)
 	}
 
 	pub fn from_file(file_name: &str, hidden_activation: fn(f32) -> f32, hidden_activation_prime: fn(f32) -> f32) -> Result<Self, Box<dyn Error>> {
@@ -129,7 +122,7 @@ impl BotAgent
 	pub fn init_random(weight_count: usize, rng: &mut dyn RngCore) -> Self {
 		let layer_sizes = vec![weight_count, 64, 128, MAX_DECISION];
 		BotAgent {
-			net: NeuralNet::gen_random(rng, &layer_sizes, relu, relu_prime),
+			net: NeuralNet::gen_random(rng, &layer_sizes, super::relu, super::relu_prime),
 			baseline: 0.0,
 		}
 	}
