@@ -1,5 +1,5 @@
 use crate::rl::{agent::{Agent, softmax, softmax_then_select}, mask::Mask, moveslot::{MAX_DECISION, Moveslot}, nn::neural_net::NeuralNet};
-use rand::{Rng, RngCore};
+use rand::RngCore;
 
 use std::error::Error;
 
