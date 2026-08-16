@@ -25,6 +25,11 @@ pub struct Step {
 	pub move_chosen: Moveslot,
 	pub probabilities: Vec<f32>,
 }
+impl Step {
+	pub fn chosen_prob(&self) -> f32 {
+		self.probabilities[self.move_chosen.to_number()]
+	}
+}
 
 pub struct PlayedBattle {
 	pub steps: Vec<Step>,

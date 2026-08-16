@@ -10,6 +10,7 @@ use crate::rl::{mask::Mask, moveslot::Moveslot};
 use rand::{Rng as _, RngCore};
 
 pub const RELU_LEAK: f32 = 0.01;
+pub const EPS: f32 = 0.05;
 
 
 pub trait Agent {
@@ -24,6 +25,19 @@ impl <A: Agent + ?Sized> Agent for Box<A> {
 
 pub fn mean_squared_error(guess: f32, values: &[f32]) -> f32 {
 	values.iter().map(|v| (guess - v) * (guess - v)).sum()
+}
+
+pub fn normalise_floats(floats: &[f32]) -> Vec<f32> {
+	match floats {
+		[] => vec![],
+		floats => {
+			let mean = floats.iter().sum::<f32>() / floats.len() as f32;
+			let std: f32 = floats.iter().map(|f| {
+				(f - mean) * (f - mean)
+			}).sum::<f32>() / floats.len() as f32;
+			floats.into_iter().map(|f| (f - mean) / (std + EPS)).collect()
+		}
+	}
 }
 
 
