@@ -3,7 +3,7 @@ use rand::{Rng, RngCore};
 use crate::battle::state::Team;
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::field::PositionId;
-use crate::rl::agent::Agent;
+use crate::rl::agent::{Agent, softmax};
 use crate::rl::agent::bot_agent::BotAgent;
 use crate::rl::train::EXPLORATION_CHANCE;
 use crate::{
@@ -20,6 +20,7 @@ use crate::{
 	},
 };
 
+#[derive(Clone)]
 pub struct Step {
 	pub encoding: Vec<f32>,
 	pub move_chosen: Moveslot,
@@ -27,10 +28,11 @@ pub struct Step {
 }
 impl Step {
 	pub fn chosen_prob(&self) -> f32 {
-		self.probabilities[self.move_chosen.to_number()]
+		softmax(&self.probabilities)[self.move_chosen.to_number()]
 	}
 }
 
+#[derive(Clone)]
 pub struct PlayedBattle {
 	pub steps: Vec<Step>,
 	pub battle_reward: f32,
