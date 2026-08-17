@@ -51,7 +51,7 @@ impl LearningAgent for BotAgent {
 		pub fn learn_from_battle(train_config: &TrainConfig, agent: &mut BotAgent, played_battle: &PlayedBattle, scalar: f32) {
 			let mut gt = scalar;
 			agent.baseline += (played_battle.battle_reward - agent.baseline) * BASELINE_LEARNING_RATE;
-			for Step { encoding, move_chosen, probabilities } in played_battle.steps.iter() {
+			for Step { encoding, move_chosen, probabilities, mask: _ } in played_battle.steps.iter() {
 				agent.backprop(
 					*move_chosen,
 					gt,

@@ -22,6 +22,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Step {
 	pub encoding: Vec<f32>,
+	pub mask: Mask,
 	pub move_chosen: Moveslot,
 	pub probabilities: Vec<f32>,
 }
@@ -42,19 +43,26 @@ pub struct PlayedBattle {
  * 
  * Please only give positions aligned with the agent's team :)
  */
-fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> Vec<(Moveslot, Command, Vec<f32>)> {
+fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> (Vec<Step>, Vec<Command>) {
 	positions
 		.iter()
 		.map(|pos| {
 			let encoding = encoder::encode(battle_state, registry, true);
 			let mask = Mask::from_battle_state(&pos.team(), *pos, &battle_state);
-			let (replacement, probabilities) = agent.choose_move_with_probs(&encoding, &mask, rng);
+			let (move_chosen, probabilities) = agent.choose_move_with_probs(&encoding, &mask, rng);
 
-			let command = replacement.to_command(*pos, battle_state, registry);
-			
-			(replacement, command, probabilities)
+			let command = move_chosen.to_command(*pos, battle_state, registry);
+
+			let agent_step =
+				Step {
+					encoding, 
+					move_chosen,
+					probabilities,
+					mask,
+				};
+			(agent_step, command)
 		})
-		.collect()
+		.unzip()
 }
 
 /**
@@ -108,6 +116,7 @@ pub fn play_out_battle(
 					encoding,
 					move_chosen: agent_moveslot,
 					probabilities,
+					mask: agent_mask,
 				});
 				StepResult {
 					battle_state: battle,
@@ -118,19 +127,10 @@ pub fn play_out_battle(
 				// need to get the agent to tell us who to swap to
 				let agent_replacement_pos: Vec<PositionId> = positions.iter().filter(|PositionId(p)| p % 2 == 0).map(|p| *p).collect();
 				let opponent_replacement_pos: Vec<PositionId> = positions.iter().filter(|PositionId(p)| p % 2 == 1).map(|p| *p).collect();
-				let learner_results = learner_team_replacements(agent, &agent_replacement_pos, &battle, registry, rng);
+				let (mut agent_steps, agent_commands) = learner_team_replacements(agent, &agent_replacement_pos, &battle, registry, rng);
 				let opponent_replacements = opponent_team_replacements(opponent, &opponent_replacement_pos, &battle, registry, rng);
 
-				let mut agent_steps = learner_results.iter().map(|(moveslot, _, probabilities)| {
-					Step {
-						encoding: encoder::encode(&battle, registry, true),
-						move_chosen: *moveslot,
-						probabilities: probabilities.clone(),
-					}
-				}).collect();
 				actions_and_states.append(&mut agent_steps);
-
-				let agent_commands: Vec<Command> = learner_results.iter().map(|(_, c, _)| c.clone()).collect();
 
 				let all_commands = vec![agent_commands, opponent_replacements].concat();
 
