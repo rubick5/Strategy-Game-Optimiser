@@ -3,8 +3,7 @@ use rand::{Rng, RngCore};
 use crate::battle::state::Team;
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::field::PositionId;
-use crate::rl::agent::{Agent, softmax};
-use crate::rl::agent::bot_agent::BotAgent;
+use crate::rl::agent::{Agent, LearningAgent, softmax};
 use crate::rl::train::EXPLORATION_CHANCE;
 use crate::{
 	battle::{
@@ -43,7 +42,7 @@ pub struct PlayedBattle {
  * 
  * Please only give positions aligned with the agent's team :)
  */
-fn learner_team_replacements(agent: &mut BotAgent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> Vec<(Moveslot, Command, Vec<f32>)> {
+fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> Vec<(Moveslot, Command, Vec<f32>)> {
 	positions
 		.iter()
 		.map(|pos| {
@@ -78,7 +77,7 @@ fn opponent_team_replacements(agent: &mut dyn Agent, positions: &[PositionId], b
 pub fn play_out_battle(
 	mut battle: BattleState,
 	registry: &Registry,
-	agent: &mut BotAgent,
+	agent: &mut impl LearningAgent,
 	opponent: &mut dyn Agent,
 	rng: &mut dyn RngCore,
 ) -> PlayedBattle {

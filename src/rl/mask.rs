@@ -2,6 +2,7 @@ use rand::{RngCore, seq::IteratorRandom};
 
 use crate::{battle::state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId}, rl::moveslot::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
 
+#[derive(Clone, Copy)]
 pub struct Mask {
 	pub allowed: [bool; MAX_DECISION]
 }
