@@ -2,7 +2,7 @@ use std::error::Error;
 
 use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
-use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::{BASELINE_LEARNING_RATE, BotAgent}, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, mask::Mask}};
+use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::BASELINE_LEARNING_RATE, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.05;

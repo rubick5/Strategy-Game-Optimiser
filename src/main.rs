@@ -1,6 +1,5 @@
-use strat_optimizer::rl::agent::bot_agent::BotAgent;
 use strat_optimizer::rl::agent::ppo_agent::PPOAgent;
-use strat_optimizer::rl::{encoder, train};
+use strat_optimizer::rl::train;
 use rand::prelude::SeedableRng;
 use rand::rngs::StdRng;
 use std::error::Error;

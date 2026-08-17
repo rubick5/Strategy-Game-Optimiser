@@ -3,6 +3,10 @@ use crate::rl::encoder::TOTAL_ENCODING_LEN;
 use crate::rl::moveslot::MAX_DECISION;
 use rand::RngCore;
 
+// NEXT THING TO DOOOOOOOOOOOo
+// STORE MASK IN THE STEP STRUCT, ATM MASK DOESNT EXIST AND WE NEED IT
+// WHEN LEARNING IN THIS AGENT.......
+
 const EPSILON: f32 = 0.2;
 const T: usize = 5;
 
