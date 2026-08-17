@@ -6,7 +6,7 @@ pub mod ppo_agent;
 
 use std::f32::consts::E;
 
-use crate::rl::{mask::Mask, moveslot::Moveslot};
+use crate::rl::{agent::train_config::TrainConfig, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot};
 use rand::{Rng as _, RngCore};
 
 pub const RELU_LEAK: f32 = 0.01;
@@ -21,6 +21,10 @@ impl <A: Agent + ?Sized> Agent for Box<A> {
 	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
 		(**self).choose_move(representation, mask, rng)
 	}
+}
+
+pub trait LearningAgent {
+	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig);
 }
 
 pub fn mean_squared_error(guess: f32, values: &[f32]) -> f32 {
