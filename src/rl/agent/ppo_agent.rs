@@ -1,10 +1,10 @@
-use crate::{battle::state::battle_state::BattleState, rl::{agent::{Agent, LearningAgent, mean_squared_error}, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot, nn::neural_net::NeuralNet}};
+use crate::{rl::{agent::{Agent, LearningAgent}, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot, nn::neural_net::NeuralNet}};
 use crate::rl::encoder::TOTAL_ENCODING_LEN;
 use crate::rl::moveslot::MAX_DECISION;
 use rand::RngCore;
 
 const EPSILON: f32 = 0.2;
-const T: usize = 32;
+const T: usize = 5;
 
 struct PPOStep {
 	reward_to_go: f32,
@@ -16,6 +16,8 @@ struct PPOStep {
 
 // for ppo agent, we will model the battle's rewards as follows:
 // -1 point per turn, +30 for win, -30 for lose
+
+#[derive(Clone)]
 pub struct PPOAgent {
 	pub actor: NeuralNet<fn(f32) -> f32>,
 	pub critic: NeuralNet<fn(f32) -> f32>,
@@ -25,18 +27,34 @@ impl LearningAgent for PPOAgent {
 	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, _: f32, _: &super::train_config::TrainConfig) {
 		self.use_batch(batch.to_vec());
 	}
+
+	fn choose_move_with_probs(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> (Moveslot, Vec<f32>) {
+		let mut probs = self.actor.forward(representation);
+		mask.apply(&mut probs);
+		(Moveslot::from_number(super::softmax_then_select(&probs, rng)), probs)
+	}
+
+	fn move_probs(&mut self, representation: &[f32], mask: &Mask) -> Vec<f32> {
+		let mut probs = self.actor.forward(representation);
+		mask.apply(&mut probs);
+		super::softmax(&probs)
+	}
+	
 }
 
 impl Agent for PPOAgent {
 	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
-		Moveslot::from_number(super::softmax_then_select(&self.actor.forward(representation), rng))
+		let mut probs = self.actor.forward(representation);
+		mask.apply(&mut probs);
+		Moveslot::from_number(super::softmax_then_select(&probs, rng))
 	}
+
 }
 
 impl PPOAgent {
-	pub fn gen_random(rng: &mut dyn RngCore) -> Self {
-		let actor_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 64, 128, 32, MAX_DECISION];
-		let critic_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 64, 128, 32, 1];
+	pub fn init_random(rng: &mut dyn RngCore) -> Self {
+		let actor_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 32, 32, MAX_DECISION];
+		let critic_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 32, 32, 1];
 		Self {
 			actor: NeuralNet::gen_random(rng, &actor_layer_sizes, super::relu, super::relu_prime),
 			critic: NeuralNet::gen_random(rng, &critic_layer_sizes, super::relu, super::relu_prime),
@@ -67,12 +85,11 @@ impl PPOAgent {
 			}).collect();
 
 		for _ in 0..T {
-			
 			let normalised_advantages = super::normalise_floats(&raw_advantages);
 
 			for (advantage, step) in normalised_advantages.iter().zip(all_steps.iter()) {
 				let v = self.critic.forward(&step.encoding)[0];
-				let probs = self.actor.forward(&step.encoding);
+				let probs = super::softmax(&self.actor.forward(&step.encoding));
 				let p_current = probs[step.action.to_number()];
 
 				let grad = 2.0 * (v - step.reward_to_go);
@@ -97,7 +114,7 @@ impl PPOAgent {
 		if needs_clipping { 0.0 } else { advantage * rt }
 	}
 
-	fn lclip(p_current: f32, p_old: f32, advantage: f32, epsilon: f32) -> f32 {
+	fn _lclip(p_current: f32, p_old: f32, advantage: f32, epsilon: f32) -> f32 {
 		let rt = p_current / p_old;
 		let left = advantage * rt;
 		let right = rt.clamp(1.0 - epsilon, 1.0 + epsilon) * advantage;

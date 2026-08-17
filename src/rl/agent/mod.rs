@@ -23,8 +23,12 @@ impl <A: Agent + ?Sized> Agent for Box<A> {
 	}
 }
 
-pub trait LearningAgent {
+pub trait LearningAgent: Agent + Clone {
 	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig);
+
+	fn move_probs(&mut self, representation: &[f32], mask: &Mask) -> Vec<f32>;
+	
+	fn choose_move_with_probs(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> (Moveslot, Vec<f32>);
 }
 
 pub fn mean_squared_error(guess: f32, values: &[f32]) -> f32 {
