@@ -27,6 +27,11 @@ impl Agent for BotAgent {
 }
 
 impl LearningAgent for BotAgent {
+
+	fn to_file(&self, file_name: &str) -> Result<(), Box<dyn Error>> {
+		self.net.to_file(file_name)
+	}
+
 	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, gt: f32, train_config: &TrainConfig) {
 		if batch.is_empty() {
 			return;
@@ -105,9 +110,7 @@ impl BotAgent
 		})	
 	}
 
-	pub fn to_file(&self, file_name: &str) -> Result<(), Box<dyn Error>> {
-		self.net.to_file(file_name)
-	}
+	
 
 	/**
 	 * Runs the encoding through the network then applies the mask to the logits.

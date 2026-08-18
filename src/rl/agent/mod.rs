@@ -4,7 +4,7 @@ pub mod random_agent;
 pub mod spam_agent;
 pub mod ppo_agent;
 
-use std::f32::consts::E;
+use std::{error::Error, f32::consts::E};
 
 use crate::rl::{agent::train_config::TrainConfig, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot};
 use rand::{Rng as _, RngCore};
@@ -29,6 +29,8 @@ pub trait LearningAgent: Agent + Clone {
 	fn move_probs(&mut self, representation: &[f32], mask: &Mask) -> Vec<f32>;
 	
 	fn choose_move_with_probs(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> (Moveslot, Vec<f32>);
+
+	fn to_file(&self, file_name: &str) -> Result<(), Box<dyn Error>>;
 }
 
 pub fn mean_squared_error(guess: f32, values: &[f32]) -> f32 {
@@ -89,6 +91,9 @@ fn softmax_then_select(logits: &[f32], rng: &mut dyn RngCore) -> usize {
 	let random_selection = rng.random();
 	let mut counter = 0.0;
 	for (index, prob) in probabilities.into_iter().enumerate() {
+		if prob.is_nan() {
+			panic!("NANANANAN ANANNANANANA ANAN");
+		}
 		if prob <= 0.0 {
 			continue;
 		}

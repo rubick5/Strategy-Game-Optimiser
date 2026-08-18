@@ -5,13 +5,13 @@ use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::BASELINE_LEARNING_RATE, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, mask::Mask}};
 use crate::battle::state::Team;
 
-pub const EXPLORATION_CHANCE: f32 = 0.05;
+pub const EXPLORATION_CHANCE: f32 = 0.00;
 pub const LEARNING_RATE: f32 = 0.05;
 pub const ENTROPY_REWARD_RATE: f32 = 0.05;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
-const BATCH_COUNT: usize = 5_000;
+const BATCH_COUNT: usize = 2_000;
 const BATCH_SIZE: usize = 32;
 
 const BATCH_PRINT_FREQ: usize = 50;
@@ -79,8 +79,7 @@ pub fn main_loop(mut agent: impl LearningAgent, rng: &mut dyn RngCore, battle_st
 	final_agent_checks(&mut best_agent, &registry, &battle_states[0]);
 
 	println!("Saving best agent to file: agent.json...");
-	//best_agent.to_file("agent.json")
-	Ok(())
+	best_agent.to_file("agent.json")
 }
 
 fn final_agent_checks(agent: &mut impl LearningAgent, registry: &Registry, battle_state: &BattleState) {

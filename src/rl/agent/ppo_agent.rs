@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use crate::{rl::{agent::{Agent, LearningAgent}, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot, nn::neural_net::NeuralNet}};
 use crate::rl::encoder::TOTAL_ENCODING_LEN;
 use crate::rl::moveslot::MAX_DECISION;
@@ -16,6 +18,7 @@ struct PPOStep {
 	action_probability: f32,
 	critic_value: f32,
 	encoding: Vec<f32>,
+	mask: Mask,
 }
 
 // for ppo agent, we will model the battle's rewards as follows:
@@ -43,6 +46,10 @@ impl LearningAgent for PPOAgent {
 		mask.apply(&mut probs);
 		super::softmax(&probs)
 	}
+
+	fn to_file(&self, file_name: &str) -> Result<(), Box<dyn Error>> {
+		self.actor.to_file(file_name)
+	}
 	
 }
 
@@ -52,7 +59,6 @@ impl Agent for PPOAgent {
 		mask.apply(&mut probs);
 		Moveslot::from_number(super::softmax_then_select(&probs, rng))
 	}
-
 }
 
 impl PPOAgent {
@@ -79,6 +85,7 @@ impl PPOAgent {
 						action_probability: step.chosen_prob(),
 						critic_value: self.critic.forward(&step.encoding)[0],
 						encoding: step.encoding,
+						mask: step.mask,
 					}
 				}).collect();
 			all_steps.append(&mut ppo_steps);
@@ -93,18 +100,24 @@ impl PPOAgent {
 
 			for (advantage, step) in normalised_advantages.iter().zip(all_steps.iter()) {
 				let v = self.critic.forward(&step.encoding)[0];
-				let probs = super::softmax(&self.actor.forward(&step.encoding));
+				let probs = self.move_probs(&step.encoding, &step.mask);
 				let p_current = probs[step.action.to_number()];
 
-				let grad = 2.0 * (v - step.reward_to_go);
-				self.critic.backward(vec![grad], &step.encoding, 0.05);
+				let grad = (2.0 * (v - step.reward_to_go)).clamp(-10.0, 10.0);
+				//println!("critic 'grad': {}", grad);
+				
+				self.critic.backward(vec![grad], &step.encoding, 0.005);
 
 				let coeff = Self::lclip_prime(p_current, step.action_probability, *advantage, EPSILON);
+				let h: f32 = probs.iter().filter(|x| **x != 0.0).map(|x| -x * x.ln()).sum();
 				let error = (0..probs.len()).map(|i| {
 					let indicator = if i == step.action.to_number() { 1.0 } else { 0.0 };
-					coeff * (probs[i] - indicator)
+					let entropy_term = if probs[i] == 0.0 { 0.0 } else {
+						probs[i] * (probs[i].ln() + h)
+					};
+					coeff * (probs[i] - indicator) + entropy_term * 0.3
 				}).collect();
-				self.actor.backward(error, &step.encoding, 0.05);
+				self.actor.backward(error, &step.encoding, 0.01);
 			}
 		}
 	}
@@ -127,12 +140,12 @@ impl PPOAgent {
 }
 
 fn calc_reward_to_go(battle: &PlayedBattle) -> Vec<f32> {
-	let mut running = battle.battle_reward * 30.0;
+	let mut running = battle.battle_reward * 3.0;
 	let gamma = 0.95;
 
 	let mut returns: Vec<f32> = vec![0.0; battle.steps.len()];
 	for t in (0..battle.steps.len()).rev() {
-		running = -1.0 + gamma * running;
+		running = gamma * running; // -1.0
 		returns[t] = running;
 	}
 	returns
