@@ -115,7 +115,7 @@ impl PPOAgent {
 					let entropy_term = if probs[i] == 0.0 { 0.0 } else {
 						probs[i] * (probs[i].ln() + h)
 					};
-					coeff * (probs[i] - indicator) + entropy_term * 0.3
+					coeff * (probs[i] - indicator) + entropy_term * 0.1
 				}).collect();
 				self.actor.backward(error, &step.encoding, 0.01);
 			}

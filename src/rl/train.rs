@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use rand::{RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
+use rand::{Rng, RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
 use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::BASELINE_LEARNING_RATE, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{PlayedBattle, play_out_battle}, encoder, mask::Mask}};
 use crate::battle::state::Team;
@@ -16,7 +16,17 @@ const BATCH_SIZE: usize = 32;
 
 const BATCH_PRINT_FREQ: usize = 50;
 const BATCH_PRINT_GAP_SIZE: usize = BATCH_SIZE * BATCH_PRINT_FREQ;
+const BATCH_HISTORY_FREQ: usize = 50;
 
+
+fn get_next_opponent<'a>(static_ops: &'a mut Vec<Box<dyn Agent>>, past_ops: &'a mut Vec<Box<dyn Agent>>, rng: &mut dyn RngCore) -> Option<&'a mut Box<dyn Agent>> {
+	if past_ops.is_empty() || rng.random_bool(0.7) {
+		static_ops.choose_mut(rng)
+	} else {
+		past_ops.choose_mut(rng)
+	}
+
+}
 
 fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_batches: usize) {
 	let batch_num_f32 = batch_num as f32;
@@ -25,7 +35,7 @@ fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_ba
 	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
 }
 
-pub fn main_loop(mut agent: impl LearningAgent, rng: &mut dyn RngCore, battle_state_paths: &[&str]) -> Result<(), Box<dyn Error>> {
+pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore, battle_state_paths: &[&str]) -> Result<(), Box<dyn Error>> {
 	let registry = Registry::load();
 	let mut battles_won = 0;
 
@@ -38,12 +48,14 @@ pub fn main_loop(mut agent: impl LearningAgent, rng: &mut dyn RngCore, battle_st
 		baseline_learning_rate: BASELINE_LEARNING_RATE
 	};
 	
-	let mut opponents: Vec<Box<dyn Agent>> = vec![
+	let mut static_opponents: Vec<Box<dyn Agent>> = vec![
 		Box::new(RandomAgent{}),
 		Box::new(SpamAgent{ index: 1 }),
 		Box::new(SpamAgent{index: 0}),
 		Box::new(SpamAgent{index: 2}),
 		];
+
+	let mut past_self_opponents: Vec<Box<dyn Agent>> = Vec::new();
 
 	let battle_states: Vec<BattleState> = battle_state_paths.iter()
 		.map(|s| BattleState::from_file(s)).collect::<Result<Vec<_>, _>>()?;
@@ -52,7 +64,7 @@ pub fn main_loop(mut agent: impl LearningAgent, rng: &mut dyn RngCore, battle_st
 	for batch_num in 0..BATCH_COUNT {
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();
 		for _ in 0..BATCH_SIZE {
-			let opponent = opponents.choose_mut(rng).ok_or("no opponents available...")?;
+			let opponent = get_next_opponent(&mut static_opponents, &mut past_self_opponents, rng).ok_or("no opponents available...")?;
 			let battle: BattleState = battle_states.choose(rng).ok_or("no battle states available....")?.clone();
 
 			let played_battle = play_out_battle(battle, &registry, &mut agent, opponent, rng);
@@ -72,6 +84,10 @@ pub fn main_loop(mut agent: impl LearningAgent, rng: &mut dyn RngCore, battle_st
 			battles_won = 0;
 		}
 		agent.learn_from_batch(&current_batch, 1.0, &train_config);
+
+		if batch_num % BATCH_HISTORY_FREQ == 0 {
+			past_self_opponents.push(Box::new(agent.clone()));
+		}
 	}
 	println!("final state of agent:");
 	final_agent_checks(&mut agent, &registry, &battle_states[0]);
