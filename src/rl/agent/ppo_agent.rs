@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::{rl::{agent::{Agent, LearningAgent}, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot, nn::neural_net::NeuralNet}};
+use crate::rl::{agent::{Agent, LearningAgent, train_config::TrainConfig}, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot, nn::neural_net::NeuralNet};
 use crate::rl::encoder::TOTAL_ENCODING_LEN;
 use crate::rl::moveslot::MAX_DECISION;
 use rand::RngCore;
@@ -31,8 +31,8 @@ pub struct PPOAgent {
 }
 
 impl LearningAgent for PPOAgent {
-	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, _: f32, _: &super::train_config::TrainConfig) {
-		self.use_batch(batch.to_vec());
+	fn learn_from_batch(&mut self, batch: &Vec<PlayedBattle>, _: f32, train_config: &TrainConfig) {
+		self.use_batch(batch.to_vec(), train_config);
 	}
 
 	fn choose_move_with_probs(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> (Moveslot, Vec<f32>) {
@@ -71,7 +71,7 @@ impl PPOAgent {
 		}
 	}
 
-	fn use_batch(&mut self, batch: Vec<PlayedBattle>) {
+	fn use_batch(&mut self, batch: Vec<PlayedBattle>, train_config: &TrainConfig) {
 		let mut all_steps: Vec<PPOStep> = Vec::new();
 		for b in batch {
 
@@ -106,7 +106,7 @@ impl PPOAgent {
 				let grad = (2.0 * (v - step.reward_to_go)).clamp(-10.0, 10.0);
 				//println!("critic 'grad': {}", grad);
 				
-				self.critic.backward(vec![grad], &step.encoding, 0.005);
+				self.critic.backward(vec![grad], &step.encoding, train_config.learning_rate);
 
 				let coeff = Self::lclip_prime(p_current, step.action_probability, *advantage, EPSILON);
 				let h: f32 = probs.iter().filter(|x| **x != 0.0).map(|x| -x * x.ln()).sum();
@@ -115,9 +115,9 @@ impl PPOAgent {
 					let entropy_term = if probs[i] == 0.0 { 0.0 } else {
 						probs[i] * (probs[i].ln() + h)
 					};
-					coeff * (probs[i] - indicator) + entropy_term * 0.1
+					coeff * (probs[i] - indicator) + entropy_term * train_config.entropy_reward_rate
 				}).collect();
-				self.actor.backward(error, &step.encoding, 0.01);
+				self.actor.backward(error, &step.encoding, train_config.learning_rate);
 			}
 		}
 	}

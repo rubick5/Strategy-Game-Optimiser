@@ -32,7 +32,7 @@ fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_ba
 	let batch_num_f32 = batch_num as f32;
 	let total_batches_f32 = total_batches as f32;
 	train_config.learning_rate = LEARNING_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
-	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32;
+	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32 + 0.05;
 }
 
 pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore, battle_state_paths: &[&str]) -> Result<(), Box<dyn Error>> {

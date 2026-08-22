@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng as _, SeedableRng, rngs::StdRng};
 use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 pub fn start_battle_state(registry: &Registry) -> BattleState {
@@ -19,7 +19,8 @@ pub fn start_battle_state(registry: &Registry) -> BattleState {
 pub fn main() -> Result<(), Box<dyn Error>> {
 	let registry = Registry::load();
 	let args: Vec<String> = std::env::args().collect();
-	let rng = StdRng::seed_from_u64(100);
+	let mut rng = rand::rng();
+	let rng = StdRng::seed_from_u64(rng.random());
 
 
 	let file_name = args.get(1).map(|s| s.as_str()).unwrap_or("agent.json");
