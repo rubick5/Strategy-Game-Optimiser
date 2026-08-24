@@ -17,11 +17,11 @@ pub enum Event {
 }
 
 impl Event {
-	pub fn deal_percent_damage(battle_state: BattleState, percentage: u32, target: PositionId) -> Result<Self, Box<dyn std::error::Error>> {
+	pub fn deal_percent_damage(battle_state: &BattleState, percentage: f32, target: PositionId) -> Result<Self, Box<dyn std::error::Error>> {
 		let mon = battle_state.get_mon(target).ok_or("position doesn't exist in the field")?;
-		let amount = mon.current_hp * percentage / 100;
+		let amount = mon.current_hp as f32 * percentage / 100.0;
 
-		Ok(Event::DealDamage { amount, target })
+		Ok(Event::DealDamage { amount: amount.round() as u32, target })
 	}
 
 }
