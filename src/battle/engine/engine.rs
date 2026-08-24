@@ -100,20 +100,7 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	let mut non_vol_status_handled = false;
 	loop {
 		match events.pop() {
-			Some(Event::DealDamage { amount, target}) => {
-				//println!("dealing {} to {:?}", amount, target);
-				if let Some(pos) = handle_damage_event(amount, target, &mut battle_state) {
-					fainted.push(pos);
-				}
-			}
-
-			Some(Event::Switch { current, new }) => {
-				handle_switch_event(current, new, &mut battle_state);
-			},
-
-			Some(Event::ApplyNonVolStatus { status, target }) => {
-				battle_state.get_mut_mon(target).unwrap().non_vol_status = status;
-			}
+			Some(event) => execute_event(&mut battle_state, event, &mut fainted),
 			None => {
 				// this is where we will handle our commands (there are no events to
 				// deal with atm!!)
@@ -148,6 +135,25 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	StepResult {
 		battle_state,
 		step_request
+	}
+}
+
+fn execute_event(battle_state: &mut BattleState, event: Event, fainted: &mut Vec<PositionId>) {
+	match event {
+		Event::DealDamage { amount, target} => {
+			//println!("dealing {} to {:?}", amount, target);
+			if let Some(pos) = handle_damage_event(amount, target, battle_state) {
+				fainted.push(pos);
+			}
+		},
+
+		Event::Switch { current, new } => {
+			handle_switch_event(current, new, battle_state);
+		},
+
+		Event::ApplyNonVolStatus { status, target } => {
+			battle_state.get_mut_mon(target).unwrap().non_vol_status = status;
+		}	
 	}
 }
 

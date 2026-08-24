@@ -56,15 +56,15 @@ impl BattleState {
 		}
 	}
 
-	pub fn all_field_mons_ordered(&self, registry: &Registry) -> Vec<RosterId> {
-		let rids = self.field.all_field_mons();
-		let mut states: Vec<(&RosterId, &CreatureState)> = rids.into_iter().zip(rids.iter().map(|rid| self.roster.get_mon(*rid)).flatten()).collect();
+	pub fn all_field_mons_ordered(&self, registry: &Registry) -> Vec<PositionId> {
+		let pids = self.field.all_field_positions();
+		let mut states: Vec<(&PositionId, &CreatureState)> = pids.iter().zip(pids.iter().map(|pid| self.get_mon(*pid)).flatten()).collect();
 		states.sort_by(|(_, a), (_, b)| a.get_stat(Stat::Speed, registry).cmp(&b.get_stat(Stat::Speed, registry)));
 
 		if self.trick_room {
 			states.reverse() // technically they dont calculate it this way in real game who cares it never makes a difference...
 		}
-		states.iter().map(|(rid, _)| **rid).collect()
+		states.iter().map(|(pid, _)| **pid).collect()
 	}
 
 	pub fn get_mon_from_team(&self, team: &Team, team_index: usize) -> Option<&CreatureState> {
