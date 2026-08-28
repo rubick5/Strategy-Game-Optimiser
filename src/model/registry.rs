@@ -1,3 +1,4 @@
+use crate::battle::state::stat_stages::StatStages;
 use crate::model::ability::AbilityId;
 use crate::model::effect::Effect;
 use crate::model::pmove::MoveFlags;
@@ -5,6 +6,7 @@ use crate::model::pmove::MoveTargeting;
 use crate::model::pmove::MoveType;
 use crate::model::speciesdata::SpeciesDatum;
 use crate::model::speciesdata::SpeciesId;
+use crate::model::speciesdata::Stat;
 use crate::model::typing::{Type, Typing};
 use crate::model::pmove::PMove;
 use crate::model::pmove::MoveId;
@@ -195,12 +197,29 @@ impl Registry {
 				move_targeting: MoveTargeting::Oneself,
 				move_type: Status,
 				element: Type::Normal,
-				// +4 so it resolves before the attack it is meant to block.
 				base_power: 0,
 				effects: vec![Effect::Protect],
+				// +4 so it resolves before the attack it is meant to block.
 				base_prio: 4,
 				flags: MoveFlags::NONE,
 			},
+			PMove {
+				name: String::from("blade dance"),
+				move_id: MoveId(26),
+				move_targeting: MoveTargeting::Oneself,
+				move_type: Status,
+				element: Type::Normal,
+				base_power: 0,
+				effects: vec![
+					Effect::SelfStatChanges {
+						stat_changes: StatStages::from_pairs(vec![(Stat::Attack, 2)]),
+						chance: 100,
+					}
+				],
+				base_prio: 0,
+				flags: MoveFlags::NONE,
+
+			}
 		]
 	}
 
@@ -228,7 +247,7 @@ impl Registry {
 			6 => vec![10, 12, 19, 4],
 			// brackenox: Steel + Ground STAB, Rock coverage, Taunt to shut down
 			// the status-move users it walls.
-			7 => vec![16, 6, 5, 21],
+			7 => vec![16, 6, 5, 26],
 			// originals
 			_ => vec![0, 1, 2],
 		};
