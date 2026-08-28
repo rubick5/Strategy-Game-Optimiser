@@ -1,18 +1,19 @@
+use std::collections::VecDeque;
+
 use rand::{Rng, RngCore};
 
+use crate::battle::command::Command;
+use crate::battle::engine::end_turn_resolution::{resolve_residual, resolve_turn_end};
 use crate::battle::engine::execute_move::execute_move;
+use crate::battle::event::Event;
+use crate::battle::hooks::{HookTable, Trigger};
 use crate::battle::state::battle_state::BattleState;
-use crate::battle::state::creature_state::CreatureState;
 use crate::battle::state::field::PositionId;
 use crate::battle::state::roster::RosterId;
 use crate::battle::state::Outcome;
-use crate::battle::command::Command;
-use crate::battle::event::Event;
 use crate::model::pmove::MoveId;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::{SpeciesDatum, Stat};
-
-use crate::battle::state::non_volatile_status::NonVolatileStatus;
 
 const SWITCHING_PRIO: i8 = 9;
 const MIN_PRIORITY: i8 = -7;
@@ -69,12 +70,30 @@ fn get_next_command(commands: &mut Vec<Command>, registry: &Registry, battle_sta
 	}
 }
 
-fn handle_damage_event(amount: u32, target: PositionId, battle_state: &mut BattleState) -> Option<PositionId> {
-	let target_state: &mut CreatureState = battle_state.get_mut_mon(target).unwrap();
-	target_state.current_hp = target_state.current_hp.saturating_sub(amount);
-	match target_state.current_hp {
-		0 => Some(target),
-		_ => None
+/// Subtract HP and report how much was actually lost.
+///
+/// The amount lost can be less than the amount dealt (a creature with 3 HP left
+/// only loses 3 to a 40-damage hit), and hooks that react to damage want the
+/// real figure, so this returns it rather than a faint flag.
+fn apply_damage(amount: u32, target: PositionId, battle_state: &mut BattleState) -> u32 {
+	match battle_state.get_mut_mon(target) {
+		Some(target_state) => {
+			let before = target_state.current_hp;
+			target_state.current_hp = before.saturating_sub(amount);
+			before - target_state.current_hp
+		}
+		None => 0,
+	}
+}
+
+fn apply_healing(amount: u32, target: PositionId, battle_state: &mut BattleState) -> u32 {
+	match battle_state.get_mut_mon(target) {
+		Some(target_state) => {
+			let before = target_state.current_hp;
+			target_state.current_hp = before.saturating_add(amount).min(target_state.max_hp);
+			target_state.current_hp - before
+		}
+		None => 0,
 	}
 }
 
@@ -94,35 +113,81 @@ pub struct StepResult {
 	pub step_request: StepRequest,
 }
 
+/// Where the turn currently is.
+///
+/// Replaces the old `non_vol_status_handled` boolean. Once the phase moves past
+/// `Actions` the engine stops pulling commands, so a command belonging to a
+/// creature that fainted mid-turn is dropped rather than retried forever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Phase {
+	/// Players' chosen moves and switches.
+	Actions,
+	/// Chip damage, healing, delayed attacks.
+	Residual,
+	/// Countdowns and expiry.
+	TurnEnd,
+	Done,
+}
+
+/// Resolve one turn.
+///
+/// The signature is unchanged, so nothing downstream (`rl::battle_playout`,
+/// `game_window`) needed touching.
+///
+/// The loop is: drain the event queue, and when it is empty advance the turn one
+/// step — take the next command, or move to the next phase. Hooks feed back into
+/// the same queue, so an ability that queues damage is resolved by exactly the
+/// same machinery as the move that triggered it.
 pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry: &Registry, rng: &mut dyn RngCore) -> StepResult {
-	let mut events: Vec<Event> = Vec::new();
+	// FIFO, not LIFO. The old code used `Vec::pop`, which resolved a move's
+	// secondary effects *before* its damage; with hooks queueing follow-up
+	// events that ordering would compound.
+	let mut events: VecDeque<Event> = VecDeque::new();
 	let mut fainted: Vec<PositionId> = Vec::new();
-	let mut non_vol_status_handled = false;
+	let mut hooks = HookTable::new();
+	let mut phase = Phase::Actions;
+
 	loop {
-		match events.pop() {
-			Some(event) => execute_event(&mut battle_state, event, &mut fainted),
-			None => {
-				// this is where we will handle our commands (there are no events to
-				// deal with atm!!)
-				match get_next_command(&mut commands, registry, &battle_state, rng) {
-					Some(Command::MoveAction(move_command)) => {
-						//println!("executing move: {:?}", move_command);
-						execute_move(move_command, registry, &battle_state, &mut events, rng);
-					},
-					Some(Command::Switch {current, new}) => 
-						events.push(Event::Switch { current, new }),
-					None => {
-						if !non_vol_status_handled {
-							queue_non_volatile_status(&mut battle_state, &mut events);
-							non_vol_status_handled = true;
-						} else {
-							break;
-						}
-					}
+		// Cheap: returns immediately unless something invalidated the table.
+		hooks.refresh(&battle_state, registry);
+
+		if let Some(event) = events.pop_front() {
+			execute_event(
+				&mut battle_state,
+				event,
+				&mut fainted,
+				&mut events,
+				&mut hooks,
+				registry,
+				rng,
+			);
+			continue;
+		}
+
+		// Event queue is empty, so advance the turn.
+		match phase {
+			Phase::Actions => match get_next_command(&mut commands, registry, &battle_state, rng) {
+				Some(Command::MoveAction(move_command)) => {
+					//println!("executing move: {:?}", move_command);
+					execute_move(move_command, registry, &battle_state, &mut events, rng, &hooks);
 				}
+				Some(Command::Switch { current, new }) => {
+					events.push_back(Event::Switch { current, new });
+				}
+				None => phase = Phase::Residual,
+			},
+			Phase::Residual => {
+				resolve_residual(&battle_state, registry, &hooks, &mut events, rng);
+				phase = Phase::TurnEnd;
 			}
+			Phase::TurnEnd => {
+				resolve_turn_end(&battle_state, registry, &hooks, &mut events, rng);
+				phase = Phase::Done;
+			}
+			Phase::Done => break,
 		}
 	}
+
 	//println!("fainted: {:?}", fainted);
 	let step_request =
 		if let Some(outcome) = battle_state.outcome() {
@@ -138,46 +203,110 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	}
 }
 
-fn execute_event(battle_state: &mut BattleState, event: Event, fainted: &mut Vec<PositionId>) {
+/// Apply one event, then announce it.
+///
+/// Every arm has the same shape: mutate, invalidate the hook table if the
+/// mutation changed *who is subscribed*, refresh, broadcast. Hooks respond by
+/// appending to `queue`, which this same loop will drain.
+fn execute_event(
+	battle_state: &mut BattleState,
+	event: Event,
+	fainted: &mut Vec<PositionId>,
+	queue: &mut VecDeque<Event>,
+	hooks: &mut HookTable,
+	registry: &Registry,
+	rng: &mut dyn RngCore,
+) {
 	match event {
-		Event::DealDamage { amount, target} => {
+		Event::DealDamage { amount, target, source } => {
 			//println!("dealing {} to {:?}", amount, target);
-			if let Some(pos) = handle_damage_event(amount, target, battle_state) {
-				fainted.push(pos);
+			let dealt = apply_damage(amount, target, battle_state);
+
+			hooks.refresh(battle_state, registry);
+			hooks.dispatch(
+				Trigger::AfterDamage { target, amount: dealt, source },
+				battle_state,
+				registry,
+				queue,
+				rng,
+			);
+
+			if has_fainted(battle_state, target) && !fainted.contains(&target) {
+				queue.push_back(Event::Faint { target });
 			}
-		},
+		}
+
+		Event::Heal { amount, target } => {
+			apply_healing(amount, target, battle_state);
+		}
 
 		Event::Switch { current, new } => {
+			hooks.refresh(battle_state, registry);
+			hooks.dispatch(Trigger::SwitchOut { pos: current }, battle_state, registry, queue, rng);
+
 			handle_switch_event(current, new, battle_state);
-		},
+
+			// A different creature is standing there now, so its hooks replace
+			// the old one's.
+			hooks.invalidate();
+			hooks.refresh(battle_state, registry);
+			hooks.dispatch(Trigger::SwitchIn { pos: current }, battle_state, registry, queue, rng);
+		}
 
 		Event::ApplyNonVolStatus { status, target } => {
-			battle_state.get_mut_mon(target).unwrap().non_vol_status = status;
-		}	
-	}
-}
-
-fn queue_non_volatile_status(bs: &mut BattleState, queue: &mut Vec<Event>) {
-	for pos in bs.field.all_field_positions() {
-		let mut_mon = bs.get_mut_mon(pos);
-		if let Some(m) = mut_mon {
-			match m.non_vol_status {
-				NonVolatileStatus::NoStatus => {},
-				NonVolatileStatus::Poison => {
-					queue.push(Event::DealDamage { amount: m.max_hp / 8, target: pos });
-				},
-				NonVolatileStatus::BadPoison => {
-					queue.push(Event::DealDamage { amount: m.max_hp / 16, target: pos });
-				},
-				NonVolatileStatus::Burn => {
-					queue.push(Event::DealDamage { amount: m.max_hp / 16, target: pos });
-				},
+			// Re-checked here, not just where the event was queued. A move can
+			// queue a status and then something in between — another hit, a
+			// faint, an ability landing a status first — can make it invalid.
+			// This is the check that actually counts; the one in `execute_move`
+			// is just an early-out that avoids queueing a doomed event.
+			hooks.refresh(battle_state, registry);
+			if has_fainted(battle_state, target)
+				|| !hooks.allows_status(battle_state, registry, target, status)
+			{
+				return;
 			}
+
+			if let Some(mon) = battle_state.get_mut_mon(target) {
+				mon.non_vol_status = status;
+			}
+
+			// The new status brings its own hooks.
+			hooks.invalidate();
+			hooks.refresh(battle_state, registry);
+			hooks.dispatch(Trigger::StatusApplied { target, status }, battle_state, registry, queue, rng);
+		}
+
+		Event::SetWeather { weather } => {
+			battle_state.weather = weather;
+
+			hooks.invalidate();
+			hooks.refresh(battle_state, registry);
+			hooks.dispatch(Trigger::WeatherChanged, battle_state, registry, queue, rng);
+		}
+
+		Event::Faint { target } => {
+			// Guard against a second lethal hit queueing a duplicate faint.
+			if fainted.contains(&target) {
+				return;
+			}
+			fainted.push(target);
+
+			// Broadcast BEFORE invalidating, deliberately. `providers::collect`
+			// skips creatures at 0 HP, so rebuilding first would drop the
+			// fainting creature's own hooks and an on-faint effect (Aftermath,
+			// a berry) would never fire.
+			hooks.dispatch(Trigger::AfterFaint { pos: target }, battle_state, registry, queue, rng);
+			hooks.invalidate();
 		}
 	}
 }
 
-
+fn has_fainted(battle_state: &BattleState, pos: PositionId) -> bool {
+	match battle_state.get_mon(pos) {
+		Some(mon) => mon.current_hp == 0,
+		None => false,
+	}
+}
 
 pub fn log_move_usage(battle_state: &BattleState, registry: &Registry, user: PositionId, target: PositionId, mv: MoveId) {
 	let user_name = get_species_data(battle_state, registry, user).name;
@@ -192,13 +321,17 @@ fn get_species_data(battle_state: &BattleState, registry: &Registry, pos: Positi
 }
 
 /********************************
- * 
+ *
  * TESTS BEGIN HERE:
- * 
+ *
  */
 
 #[cfg(test)]
 mod tests {
+	use crate::battle::hooks::{QueryKind, TriggerKind};
+	use crate::battle::state::creature_state::CreatureState;
+	use crate::battle::state::non_volatile_status::NonVolatileStatus;
+	use crate::battle::state::weather::{TimedWeather, Weather};
 	use crate::{battle::{command::MoveCommand, state::Team}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	use crate::battle::engine::calculate_damage::calculate_damage;
 	// maybe i should define my own moves here that aren't actual moves in the
@@ -434,7 +567,7 @@ mod tests {
 		// than ending the game...
 		let StepResult {
 			battle_state,
-			step_request 
+			step_request
 		} = step(battle_state, vec![attack_command], &test_registry(), &mut rng);
 
 		assert_eq!(battle_state.get_mon(PositionId(0)).unwrap().current_hp, 0); // it should be ko'd
@@ -500,5 +633,317 @@ mod tests {
 		// NOT NeedsReplacements. This is the key guard: outcome() has to be checked before the
 		// faint list, otherwise the engine would try to request a replacement for a wiped side.
 		assert_eq!(step_request, StepRequest::Finished(Outcome::Win { team: Team::One }));
+	}
+
+	/*******************************
+	 *
+	 * HOOK SYSTEM TESTS:
+	 *
+	 */
+
+	/// The whole point of the table: a moment nobody subscribed to costs nothing,
+	/// and a status installs exactly the hooks it declares — not a scan of the field.
+	#[test]
+	fn table_only_indexes_what_actually_subscribed() {
+		let registry = test_registry();
+		let mut battle_state = test_battle_state();
+		let mut hooks = HookTable::new();
+
+		// Clean field: nothing is poisoned, burned, or standing in weather.
+		hooks.refresh(&battle_state, &registry);
+		assert_eq!(hooks.reactive_count(TriggerKind::Residual), 0);
+		assert_eq!(hooks.query_count(QueryKind::ModifyStat), 0);
+		assert_eq!(hooks.reactive_count(TriggerKind::SwitchIn), 0);
+
+		// Burning one creature adds exactly its three declared hooks and nothing else.
+		battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+		hooks.invalidate();
+		hooks.refresh(&battle_state, &registry);
+		assert_eq!(hooks.reactive_count(TriggerKind::Residual), 1);
+		assert_eq!(hooks.query_count(QueryKind::ModifyStat), 1);
+		assert_eq!(hooks.query_count(QueryKind::TryApplyStatus), 1);
+		// Still nothing listening to switch-in, so switching stays free.
+		assert_eq!(hooks.reactive_count(TriggerKind::SwitchIn), 0);
+	}
+
+	/// A fainted creature stops being a subscriber, so it cannot keep taking
+	/// residual damage or modifying anything.
+	#[test]
+	fn fainted_creatures_stop_subscribing() {
+		let registry = test_registry();
+		let mut battle_state = test_battle_state();
+		let mut hooks = HookTable::new();
+
+		{
+			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+			mon.non_vol_status = NonVolatileStatus::Poison;
+		}
+		hooks.refresh(&battle_state, &registry);
+		assert_eq!(hooks.reactive_count(TriggerKind::Residual), 1);
+
+		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 0;
+		hooks.invalidate();
+		hooks.refresh(&battle_state, &registry);
+		assert_eq!(hooks.reactive_count(TriggerKind::Residual), 0);
+	}
+
+	/// A modifier hook changing a number the engine was about to use.
+	#[test]
+	fn burn_halves_attack_through_a_query_hook() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+
+		let healthy_damage = {
+			let battle_state = test_battle_state();
+			let before = battle_state.get_mon(PositionId(1)).unwrap().current_hp;
+			let after = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng)
+				.battle_state
+				.get_mon(PositionId(1))
+				.unwrap()
+				.current_hp;
+			before - after
+		};
+
+		let burned_damage = {
+			let mut battle_state = test_battle_state();
+			battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+			let before = battle_state.get_mon(PositionId(1)).unwrap().current_hp;
+			let after = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng)
+				.battle_state
+				.get_mon(PositionId(1))
+				.unwrap()
+				.current_hp;
+			before - after
+		};
+
+		// attack 100 -> 50, so 100*40/80 = 50 becomes 50*40/80 = 25.
+		assert_eq!(healthy_damage, 50);
+		assert_eq!(burned_damage, 25);
+	}
+
+	/// Burn's residual hook still fires in the same turn it is halving Attack —
+	/// one status, two hooks, two different moments.
+	#[test]
+	fn burn_also_chips_its_owner() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+
+		battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+		let before = battle_state.get_mon(PositionId(0)).unwrap().current_hp;
+		let max_hp = battle_state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		let after = step(battle_state, vec![], &registry, &mut rng)
+			.battle_state
+			.get_mon(PositionId(0))
+			.unwrap()
+			.current_hp;
+
+		assert_eq!(before - after, max_hp / 16);
+	}
+
+	/// A veto hook. The rule lives on the status that already exists, and the
+	/// engine never asks "does this creature already have a status?".
+	#[test]
+	fn an_existing_status_blocks_a_new_one() {
+		let registry = test_registry();
+		let battle_state = {
+			let mut bs = test_battle_state();
+			bs.get_mut_mon(PositionId(1)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+			bs
+		};
+
+		let mut hooks = HookTable::new();
+		hooks.refresh(&battle_state, &registry);
+
+		// The burned creature refuses poison...
+		assert!(!hooks.allows_status(
+			&battle_state,
+			&registry,
+			PositionId(1),
+			NonVolatileStatus::Poison
+		));
+		// ...but its healthy opponent accepts it.
+		assert!(hooks.allows_status(
+			&battle_state,
+			&registry,
+			PositionId(0),
+			NonVolatileStatus::Poison
+		));
+	}
+
+	/// Weather is a field-level hook owner: one subscription, damage to everyone.
+	#[test]
+	fn sandstorm_chips_every_creature_on_the_field() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+		battle_state.weather = Some(TimedWeather {
+			weather: Weather::Sandstorm,
+			turns_left: 5,
+		});
+
+		let before: Vec<u32> = vec![
+			battle_state.get_mon(PositionId(0)).unwrap().current_hp,
+			battle_state.get_mon(PositionId(1)).unwrap().current_hp,
+		];
+		let max_hps: Vec<u32> = vec![
+			battle_state.get_mon(PositionId(0)).unwrap().max_hp,
+			battle_state.get_mon(PositionId(1)).unwrap().max_hp,
+		];
+
+		let next = step(battle_state, vec![], &registry, &mut rng).battle_state;
+
+		assert_eq!(
+			before[0] - next.get_mon(PositionId(0)).unwrap().current_hp,
+			max_hps[0] / 16
+		);
+		assert_eq!(
+			before[1] - next.get_mon(PositionId(1)).unwrap().current_hp,
+			max_hps[1] / 16
+		);
+		// and it ticked down by one
+		assert_eq!(next.weather.unwrap().turns_left, 4);
+	}
+
+	/// The countdown hook clears the weather when it runs out, and the residual
+	/// damage still happens on that final turn (order::WEATHER_DAMAGE runs in the
+	/// Residual phase, the countdown in TurnEnd).
+	#[test]
+	fn weather_expires_after_its_last_turn() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+		battle_state.weather = Some(TimedWeather {
+			weather: Weather::Sandstorm,
+			turns_left: 1,
+		});
+		let before = battle_state.get_mon(PositionId(0)).unwrap().current_hp;
+		let max_hp = battle_state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		let next = step(battle_state, vec![], &registry, &mut rng).battle_state;
+
+		assert_eq!(next.weather, None);
+		assert_eq!(before - next.get_mon(PositionId(0)).unwrap().current_hp, max_hp / 16);
+	}
+
+	/// Two residual sources on the same creature resolve in the declared order
+	/// (weather damage, then poison) and both land.
+	#[test]
+	fn residual_sources_stack_in_declared_order() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+		battle_state.weather = Some(TimedWeather {
+			weather: Weather::Sandstorm,
+			turns_left: 5,
+		});
+		battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Poison;
+
+		let before = battle_state.get_mon(PositionId(0)).unwrap().current_hp;
+		let max_hp = battle_state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		let next = step(battle_state, vec![], &registry, &mut rng).battle_state;
+
+		assert_eq!(
+			before - next.get_mon(PositionId(0)).unwrap().current_hp,
+			max_hp / 16 + max_hp / 8
+		);
+	}
+
+	/// The status veto is enforced where the state is actually mutated, not only
+	/// where the event was queued.
+	#[test]
+	fn status_veto_is_enforced_at_apply_time() {
+		let registry = Registry {
+			species_data: vec![frail_attacker(), fat_defender()],
+			// a 0-power move that always poisons
+			moves: vec![PMove {
+				name: String::from("always_poison"),
+				move_id: MoveId(0),
+				move_targeting: MoveTargeting::Single,
+				move_type: MoveType::Status,
+				base_power: 0,
+				effects: vec![crate::model::effect::Effect::PoisonChance { chance: 100 }],
+				base_prio: 0,
+			}],
+		};
+		let mut rng = rand::rng();
+
+		// The target is already burned, so poison must not overwrite it.
+		let mut battle_state = test_battle_state();
+		battle_state.get_mut_mon(PositionId(1)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+
+		let poison_them = Command::MoveAction(MoveCommand {
+			move_id: MoveId(0),
+			user: PositionId(0),
+			targets: vec![PositionId(1)],
+		});
+
+		let next = step(battle_state, vec![poison_them], &registry, &mut rng).battle_state;
+
+		assert_eq!(
+			next.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::Burn
+		);
+	}
+
+	/// A status lands normally on an unafflicted target — the veto above is a
+	/// rule, not the hook system failing to apply anything at all.
+	#[test]
+	fn status_lands_on_a_clean_target() {
+		let registry = Registry {
+			species_data: vec![frail_attacker(), fat_defender()],
+			moves: vec![PMove {
+				name: String::from("always_poison"),
+				move_id: MoveId(0),
+				move_targeting: MoveTargeting::Single,
+				move_type: MoveType::Status,
+				base_power: 0,
+				effects: vec![crate::model::effect::Effect::PoisonChance { chance: 100 }],
+				base_prio: 0,
+			}],
+		};
+		let mut rng = rand::rng();
+		let battle_state = test_battle_state();
+
+		let poison_them = Command::MoveAction(MoveCommand {
+			move_id: MoveId(0),
+			user: PositionId(0),
+			targets: vec![PositionId(1)],
+		});
+
+		let next = step(battle_state, vec![poison_them], &registry, &mut rng).battle_state;
+
+		assert_eq!(
+			next.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::Poison
+		);
+	}
+
+	/// Residual damage never over-kills into a second faint entry.
+	#[test]
+	fn a_creature_only_faints_once() {
+		let registry = test_registry();
+		let mut rng = rand::rng();
+		let mut battle_state = test_battle_state();
+		battle_state.weather = Some(TimedWeather {
+			weather: Weather::Sandstorm,
+			turns_left: 5,
+		});
+		{
+			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+			mon.non_vol_status = NonVolatileStatus::Poison;
+			mon.current_hp = 1;
+		}
+
+		let StepResult { step_request, .. } = step(battle_state, vec![], &registry, &mut rng);
+
+		match step_request {
+			StepRequest::NeedsReplacements(positions) => {
+				assert_eq!(positions, vec![PositionId(0)]);
+			}
+			other => panic!("expected a single replacement request, got {:?}", other),
+		}
 	}
 }
