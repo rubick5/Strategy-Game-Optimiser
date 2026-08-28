@@ -15,6 +15,9 @@ pub struct SpeciesDatum {
 	pub speed: u32,
 }
 
+/// `Copy + PartialEq` so a `Stat` can travel inside a `Query::ModifyStat` and be
+/// matched on by hook handlers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Stat {
 	Attack,
 	Defense,
