@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use rand::{Rng as _, SeedableRng, rngs::StdRng};
-use strat_optimizer::{battle::{engine::engine::StepRequest, state::{Team, battle_state::BattleState, creature_state::CreatureState}}, game_window::game_window::BattleApp, model::{registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
+use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 /// A three-a-side match-up built from the new roster, so the demo actually shows
 /// the abilities off: Sand Stream vs Levitate, with a Rough Skin wall and a Guts
