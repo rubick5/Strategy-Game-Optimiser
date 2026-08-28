@@ -4,7 +4,6 @@
 //! `deal_weather_damage` pair, including the `todo!()` that would have panicked
 //! the moment anything called it.
 
-use std::any::Any;
 use std::collections::VecDeque;
 
 use rand::RngCore;
