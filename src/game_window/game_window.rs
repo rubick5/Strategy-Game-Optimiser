@@ -58,8 +58,11 @@ where
 
 		if let Some(moveslot) = move_selected {
 			// do some stuff
-			let encoding = encoder::encode(&self.battle, &self.registry, false);
-			let agent_mask = Mask::from_battle_state(&self.player_team.other(), agent_position, &self.battle);
+			// Encoded from the agent's own side, not the player's — the agent here
+			// is whichever team the human is not.
+			let agent_team = self.player_team.other();
+			let encoding = encoder::encode(&self.battle, &self.registry, false, &agent_team);
+			let agent_mask = Mask::from_battle_state(&agent_team, agent_position, &self.battle);
 			let agent_moveslot = self.agent.choose_move(&encoding, &agent_mask, &mut self.rng);
 			let commands = vec![
 				agent_moveslot.to_command(agent_position, &self.battle, &self.registry),
@@ -73,8 +76,15 @@ where
 
 	fn display_creature_state(&self, ps: &CreatureState) -> String {
 		let species_data = self.registry.get_species_data(ps.species_id);
+		let ability = match ps.ability {
+			Some(ability) => ability.name(),
+			None => "none",
+		};
 
-		format!("{}: HP {} out of {}, with status: {}", species_data.name, ps.current_hp, species_data.base_hp, ps.non_vol_status)
+		format!(
+			"{} [{}]: HP {} out of {}, with status: {}",
+			species_data.name, ability, ps.current_hp, ps.max_hp, ps.non_vol_status
+		)
 	}
 	fn display_team(&self, team: &Team, ui: &mut egui::Ui) {
 		for m in self.battle.field.team(team) {

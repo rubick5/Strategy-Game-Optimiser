@@ -1,19 +1,25 @@
 use std::error::Error;
 
 use rand::{Rng as _, SeedableRng, rngs::StdRng};
-use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{pmove::MoveId, registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
+use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
+/// A three-a-side match-up built from the new roster, so the demo actually shows
+/// the abilities off: Sand Stream vs Levitate, with a Rough Skin wall and a Guts
+/// attacker on the field to start.
+///
+/// Each creature gets `Registry::default_moveset`, which is four moves — the cap
+/// `Mask` imposes.
 pub fn start_battle_state(registry: &Registry) -> BattleState {
-	let ps0 = CreatureState::from_species(registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
-	let ps01 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
-	let ps11 = CreatureState::from_species(registry, SpeciesId(1), vec![MoveId(0), MoveId(1), MoveId(2)]);
+	let mon = |id: u32| {
+		CreatureState::from_species(registry, SpeciesId(id), Registry::default_moveset(SpeciesId(id)))
+	};
 
-	let mut ps00 = ps0.clone();
-	ps00.current_hp = 1;
-	let ps1 = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
-	let mut ps1_1hp = CreatureState::from_species(&registry, SpeciesId(0), vec![MoveId(0), MoveId(1), MoveId(2)]);
-	ps1_1hp.current_hp = 1;
-	BattleState::from(vec![ps0, ps01], vec![ps1, ps11], vec![0, 1])
+	// cinderfox (Guts), stonewarden (Sand Stream), mireling (Natural Cure)
+	let team0 = vec![mon(2), mon(3), mon(4)];
+	// thornbeast (Rough Skin), gustling (Levitate), brackenox (no ability)
+	let team1 = vec![mon(5), mon(6), mon(7)];
+
+	BattleState::from(team0, team1, vec![0, 1])
 }
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -22,7 +28,9 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	let mut rng = rand::rng();
 	let rng = StdRng::seed_from_u64(rng.random());
 
-
+	// NOTE: an agent.json trained before the encoder change has the wrong input
+	// width and will not work here. Retrain first (`cargo run --bin
+	// strat-optimizer`), then point this at the fresh file.
 	let file_name = args.get(1).map(|s| s.as_str()).unwrap_or("agent.json");
 	let battle_app = BattleApp::<StdRng> {
 		battle: start_battle_state(&registry),
@@ -38,5 +46,5 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 		Box::new(|_cc| Ok(Box::new(battle_app))),
 	)?;
 	Ok(())
-	
+
 }

@@ -4,25 +4,14 @@
 //! listening?". Everything else in the hook system is generic machinery; this
 //! file is the only part that knows what kinds of thing can own a hook.
 //!
-//! ## Adding abilities and items
+//! ## Adding a new kind of hook owner
 //!
-//! The seam is deliberately small. Once `CreatureState` carries an ability or an
-//! item, hooking them up is three lines in [`collect`]:
-//!
-//! ```ignore
-//! if let Some(ability_id) = mon.ability {
-//!     let defs = effects::ability::hooks(ability_id);
-//!     if !defs.is_empty() {
-//!         out.push((HookSource::Ability { pos }, defs, speed));
-//!     }
-//! }
-//! ```
-//!
-//! plus an `effects/ability.rs` shaped exactly like `effects/status.rs`. The
-//! engine itself does not change at all — it is already broadcasting every
-//! moment an ability could want.
+//! Held items are the obvious next one, and the seam is marked below. It is
+//! three lines here plus an `effects/item.rs` shaped exactly like
+//! `effects/ability.rs`. The engine does not change — it is already broadcasting
+//! every moment an item could want.
 
-use crate::battle::hooks::effects::{status, weather};
+use crate::battle::hooks::effects::{ability, status, weather};
 use crate::battle::hooks::handler::HookDef;
 use crate::battle::hooks::source::HookSource;
 use crate::battle::state::battle_state::BattleState;
@@ -47,7 +36,7 @@ pub fn collect(battle_state: &BattleState, registry: &Registry) -> Vec<Subscribe
 			Some(mon) => mon,
 			None => continue,
 		};
-		if mon.current_hp == 0 {
+		if !mon.is_alive() {
 			continue;
 		}
 		let speed = mon.get_stat(Stat::Speed, registry);
@@ -55,16 +44,19 @@ pub fn collect(battle_state: &BattleState, registry: &Registry) -> Vec<Subscribe
 		let status_defs = status::hooks(mon.non_vol_status);
 		if !status_defs.is_empty() {
 			out.push((
-				HookSource::Status {
-					pos,
-					status: mon.non_vol_status,
-				},
+				HookSource::Status { pos, status: mon.non_vol_status },
 				status_defs,
 				speed,
 			));
 		}
 
-		// SEAM: abilities go here.
+		if let Some(ability_id) = mon.ability {
+			let ability_defs = ability::hooks(ability_id);
+			if !ability_defs.is_empty() {
+				out.push((HookSource::Ability { pos }, ability_defs, speed));
+			}
+		}
+
 		// SEAM: held items go here.
 	}
 

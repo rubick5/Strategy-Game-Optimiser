@@ -19,6 +19,11 @@ use crate::{
 	},
 };
 
+/// Hard stop on a single battle. A battle that hits this produced no usable
+/// training signal, so it is reported separately rather than being quietly
+/// folded in with the losses.
+pub const MAX_TURNS: usize = 1000;
+
 #[derive(Clone)]
 pub struct Step {
 	pub encoding: Vec<f32>,
@@ -32,22 +37,39 @@ impl Step {
 	}
 }
 
+/// How a battle finished, from the learner's point of view.
+///
+/// `Timeout` used to be indistinguishable from a loss: the old code returned
+/// `battle_reward: 0.0` with no steps, so it counted as a not-win *and*
+/// contributed nothing to learning, with no way to see how often it happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattleEnd {
+	Win,
+	Loss,
+	Draw,
+	Timeout,
+}
+
 #[derive(Clone)]
 pub struct PlayedBattle {
 	pub steps: Vec<Step>,
 	pub battle_reward: f32,
+	pub outcome: BattleEnd,
+	/// Engine steps taken, including replacement requests.
+	pub turns: usize,
 }
 
 /**
  * Makes the agent calculate replacements for all positions handed to the function
- * 
+ *
  * Please only give positions aligned with the agent's team :)
  */
 fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> (Vec<Step>, Vec<Command>) {
 	positions
 		.iter()
 		.map(|pos| {
-			let encoding = encoder::encode(battle_state, registry, true);
+			// Encoded from the replacing side's own point of view.
+			let encoding = encoder::encode(battle_state, registry, true, &pos.team());
 			let mask = Mask::from_battle_state(&pos.team(), *pos, &battle_state);
 			let (move_chosen, probabilities) = agent.choose_move_with_probs(&encoding, &mask, rng);
 
@@ -55,7 +77,7 @@ fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[Positi
 
 			let agent_step =
 				Step {
-					encoding, 
+					encoding,
 					move_chosen,
 					probabilities,
 					mask,
@@ -72,7 +94,7 @@ fn opponent_team_replacements(agent: &mut dyn Agent, positions: &[PositionId], b
 	positions
 		.iter()
 		.map(|pos| {
-			let encoding = encoder::encode(&battle_state, registry, true);
+			let encoding = encoder::encode(battle_state, registry, true, &pos.team());
 			let mask = Mask::from_battle_state(&pos.team(), *pos, battle_state);
 			agent.choose_move(&encoding, &mask, rng).to_command(*pos, battle_state, registry)
 		})
@@ -81,6 +103,11 @@ fn opponent_team_replacements(agent: &mut dyn Agent, positions: &[PositionId], b
 
 /**
  * Returns the battle reward for playing out the battle, plus the actions and states that took place
+ *
+ * The learner is Team Zero and the opponent Team One, and each now receives the
+ * board encoded from its *own* side. Before this, both read a Team-Zero-first
+ * encoding, so the opponent was evaluating the learner's position rather than its
+ * own — which quietly corrupted every self-play game.
  */
 pub fn play_out_battle(
 	mut battle: BattleState,
@@ -92,7 +119,7 @@ pub fn play_out_battle(
 	let mut actions_and_states: Vec<Step> = Vec::new();
 	let mut turn_count = 0;
 	let mut step_request = StepRequest::NeedsActions;
-	while turn_count < 1000 {
+	while turn_count < MAX_TURNS {
 		turn_count += 1;
 
 		match step_request {
@@ -100,20 +127,24 @@ pub fn play_out_battle(
 				let agent_mask = Mask::from_battle_state(&Team::Zero, PositionId(0), &battle);
 				let opponent_mask = Mask::from_battle_state(&Team::One, PositionId(1), &battle);
 
-				let encoding = encoder::encode(&battle, registry, false);
+				// Both views in one pass: the per-creature blocks are the same for
+				// either side, so this costs barely more than a single encoding.
+				let (agent_encoding, opponent_encoding) =
+					encoder::encode_both(&battle, registry, false);
+
 				let (mut agent_moveslot, probabilities) =
-					agent.choose_move_with_probs(&encoding, &agent_mask, rng);
+					agent.choose_move_with_probs(&agent_encoding, &agent_mask, rng);
 				if rng.random::<f32>() < EXPLORATION_CHANCE {
 					agent_moveslot = agent_mask.get_random_valid(rng).unwrap();
 				}
-				let opponent_moveslot = opponent.choose_move(&encoding, &opponent_mask, rng);
+				let opponent_moveslot = opponent.choose_move(&opponent_encoding, &opponent_mask, rng);
 
 				let actions = vec![
 					agent_moveslot.to_command(PositionId(0), &battle, registry),
 					opponent_moveslot.to_command(PositionId(1), &battle, registry),
 				];
 				actions_and_states.push(Step {
-					encoding,
+					encoding: agent_encoding,
 					move_chosen: agent_moveslot,
 					probabilities,
 					mask: agent_mask,
@@ -141,15 +172,35 @@ pub fn play_out_battle(
 				} = engine::step(battle, all_commands, registry, rng);
 			}
 			engine::StepRequest::Finished(Outcome::Win { team: Team::Zero }) => {
-				return PlayedBattle { steps: actions_and_states, battle_reward: 1.0 };
+				return PlayedBattle {
+					steps: actions_and_states,
+					battle_reward: 1.0,
+					outcome: BattleEnd::Win,
+					turns: turn_count,
+				};
 			}
 			engine::StepRequest::Finished(Outcome::Win { team: Team::One }) => {
-				return PlayedBattle { steps: actions_and_states, battle_reward: -1.0 };
+				return PlayedBattle {
+					steps: actions_and_states,
+					battle_reward: -1.0,
+					outcome: BattleEnd::Loss,
+					turns: turn_count,
+				};
 			}
 			engine::StepRequest::Finished(Outcome::Draw) => {
-				return PlayedBattle { steps: actions_and_states, battle_reward: -0.1 };
+				return PlayedBattle {
+					steps: actions_and_states,
+					battle_reward: -0.1,
+					outcome: BattleEnd::Draw,
+					turns: turn_count,
+				};
 			}
 		}
 	}
-	PlayedBattle { steps: vec![], battle_reward: 0.0 }
+	PlayedBattle {
+		steps: vec![],
+		battle_reward: 0.0,
+		outcome: BattleEnd::Timeout,
+		turns: turn_count,
+	}
 }
