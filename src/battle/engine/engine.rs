@@ -242,7 +242,23 @@ fn execute_event(
 
 		Event::Switch { current, new } => {
 			hooks.refresh(battle_state, registry);
-			hooks.dispatch(Trigger::SwitchOut { pos: current }, battle_state, registry, queue, rng);
+
+			// SwitchOut hooks are dispatched into their own queue and drained
+			// *before* the field pointer moves.
+			//
+			// This matters more than it looks. Events target a `PositionId`, and
+			// a switch is precisely the moment a position stops meaning the same
+			// creature. If a departing creature's hook (Natural Cure curing its
+			// own status, say) went on the main queue, it would be applied after
+			// the swap and land on the creature coming in.
+			//
+			// Recursion depth here is 2, not unbounded: the nested call queues
+			// its own follow-ups into `departing` and this same loop drains them.
+			let mut departing: VecDeque<Event> = VecDeque::new();
+			hooks.dispatch(Trigger::SwitchOut { pos: current }, battle_state, registry, &mut departing, rng);
+			while let Some(pending) = departing.pop_front() {
+				execute_event(battle_state, pending, fainted, &mut departing, hooks, registry, rng);
+			}
 
 			handle_switch_event(current, new, battle_state);
 
@@ -332,7 +348,9 @@ mod tests {
 	use crate::battle::state::creature_state::CreatureState;
 	use crate::battle::state::non_volatile_status::NonVolatileStatus;
 	use crate::battle::state::weather::{TimedWeather, Weather};
-	use crate::{battle::{command::MoveCommand, state::Team}, model::{pmove::{MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
+	use crate::model::ability::AbilityId;
+	use crate::model::effect::Effect;
+	use crate::{battle::{command::MoveCommand, state::Team}, model::{pmove::{MoveFlags, MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	use crate::battle::engine::calculate_damage::calculate_damage;
 	// maybe i should define my own moves here that aren't actual moves in the
 	// registry for more independent testing...
@@ -345,7 +363,10 @@ mod tests {
 			species_id: SpeciesId(0),
 			attack: 100,
 			defense: 100,
+			special_attack: 100,
+			special_defense: 100,
 			speed: 90,
+			ability: None,
 		}
 	}
 
@@ -356,7 +377,21 @@ mod tests {
 			species_id: SpeciesId(1),
 			attack: 80,
 			defense: 80,
+			special_attack: 80,
+			special_defense: 80,
 			speed: 30,
+			ability: None,
+		}
+	}
+
+	/// Same shell as `frail_attacker`, but with an ability bolted on. Lets a test
+	/// isolate exactly one ability without any other difference.
+	fn with_ability(base: SpeciesDatum, species_id: SpeciesId, ability: AbilityId) -> SpeciesDatum {
+		SpeciesDatum {
+			name: format!("{}_{:?}", base.name, ability),
+			species_id,
+			ability: Some(ability),
+			..base
 		}
 	}
 
@@ -369,6 +404,7 @@ mod tests {
 			base_power: 999999,
 			effects: vec![],
 			base_prio: 0,
+			flags: MoveFlags::NONE,
 		}
 	}
 
@@ -381,6 +417,7 @@ mod tests {
 			base_power: 40,
 			effects: vec![],
 			base_prio: 0,
+			flags: MoveFlags::CONTACT,
 		}
 	}
 
@@ -393,13 +430,72 @@ mod tests {
 			base_power: 40,
 			effects: vec![],
 			base_prio: 1,
+			flags: MoveFlags::CONTACT,
 		}
+	}
+
+	/// MoveId(3): a ground-flagged hit, for Levitate.
+	fn earth_jab() -> PMove {
+		PMove {
+			name: String::from("earth_jab"),
+			move_id: MoveId(3),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
+			base_power: 40,
+			effects: vec![],
+			base_prio: 0,
+			flags: MoveFlags::GROUND,
+		}
+	}
+
+	/// MoveId(4): a non-contact special hit, for the physical/special split.
+	fn mind_beam() -> PMove {
+		PMove {
+			name: String::from("mind_beam"),
+			move_id: MoveId(4),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Special,
+			base_power: 40,
+			effects: vec![],
+			base_prio: 0,
+			flags: MoveFlags::NONE,
+		}
+	}
+
+	/// MoveId(5): pure status, no damage component at all.
+	fn hex_glare() -> PMove {
+		PMove {
+			name: String::from("hex_glare"),
+			move_id: MoveId(5),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Status,
+			base_power: 0,
+			effects: vec![Effect::ParalysisChance { chance: 100 }],
+			base_prio: 0,
+			flags: MoveFlags::NONE,
+		}
+	}
+
+	fn test_moves() -> Vec<PMove> {
+		vec![tackle(), quick_attack(), big_damage_attack(), earth_jab(), mind_beam(), hex_glare()]
 	}
 
 	fn test_registry() -> Registry {
 		Registry {
 			species_data: vec![frail_attacker(), fat_defender()],
-			moves: vec![tackle(), quick_attack(), big_damage_attack()],
+			moves: test_moves(),
+		}
+	}
+
+	/// Registry where species 2 is `frail_attacker` plus one ability.
+	fn registry_with_ability(ability: AbilityId) -> Registry {
+		Registry {
+			species_data: vec![
+				frail_attacker(),
+				fat_defender(),
+				with_ability(frail_attacker(), SpeciesId(2), ability),
+			],
+			moves: test_moves(),
 		}
 	}
 
@@ -857,15 +953,16 @@ mod tests {
 	fn status_veto_is_enforced_at_apply_time() {
 		let registry = Registry {
 			species_data: vec![frail_attacker(), fat_defender()],
-			// a 0-power move that always poisons
+			// a status move that always poisons
 			moves: vec![PMove {
 				name: String::from("always_poison"),
 				move_id: MoveId(0),
 				move_targeting: MoveTargeting::Single,
 				move_type: MoveType::Status,
 				base_power: 0,
-				effects: vec![crate::model::effect::Effect::PoisonChance { chance: 100 }],
+				effects: vec![Effect::PoisonChance { chance: 100 }],
 				base_prio: 0,
+				flags: MoveFlags::NONE,
 			}],
 		};
 		let mut rng = rand::rng();
@@ -900,8 +997,9 @@ mod tests {
 				move_targeting: MoveTargeting::Single,
 				move_type: MoveType::Status,
 				base_power: 0,
-				effects: vec![crate::model::effect::Effect::PoisonChance { chance: 100 }],
+				effects: vec![Effect::PoisonChance { chance: 100 }],
 				base_prio: 0,
+				flags: MoveFlags::NONE,
 			}],
 		};
 		let mut rng = rand::rng();
@@ -919,6 +1017,271 @@ mod tests {
 			next.get_mon(PositionId(1)).unwrap().non_vol_status,
 			NonVolatileStatus::Poison
 		);
+	}
+
+	/*******************************
+	 *
+	 * ABILITY TESTS:
+	 *
+	 * Each of these puts one ability on species 2 and changes nothing else, so a
+	 * failure points at exactly one hook.
+	 */
+
+	/// Build a battle where position 0 holds `ability` and position 1 is a plain
+	/// fat_defender. Both get every test move.
+	fn ability_battle(ability: AbilityId) -> (Registry, BattleState) {
+		let registry = registry_with_ability(ability);
+		let all_moves = vec![MoveId(0), MoveId(3), MoveId(4), MoveId(5)];
+		let holder = CreatureState::from_species_data(
+			registry.get_species_data(SpeciesId(2)),
+			all_moves.clone(),
+		);
+		let bench = CreatureState::from_species_data(&fat_defender(), all_moves.clone());
+		let foe = CreatureState::from_species_data(&fat_defender(), all_moves.clone());
+		let foe_bench = CreatureState::from_species_data(&fat_defender(), all_moves);
+		let battle_state = BattleState::from(vec![holder, bench], vec![foe, foe_bench], vec![0, 1]);
+		(registry, battle_state)
+	}
+
+	fn hp_at(battle_state: &BattleState, pos: PositionId) -> u32 {
+		battle_state.get_mon(pos).unwrap().current_hp
+	}
+
+	/// Levitate zeroes ground damage, and only ground damage.
+	#[test]
+	fn levitate_blocks_ground_moves_only() {
+		let mut rng = rand::rng();
+		let (registry, battle_state) = ability_battle(AbilityId::Levitate);
+
+		let ground_hit = Command::MoveAction(MoveCommand {
+			move_id: MoveId(3), // earth_jab
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		let before = hp_at(&battle_state, PositionId(0));
+		let after = step(battle_state, vec![ground_hit], &registry, &mut rng).battle_state;
+		assert_eq!(hp_at(&after, PositionId(0)), before, "levitate should have nullified it");
+
+		// The same creature still takes a normal contact hit.
+		let (registry, battle_state) = ability_battle(AbilityId::Levitate);
+		let normal_hit = Command::MoveAction(MoveCommand {
+			move_id: MoveId(0), // tackle
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		let before = hp_at(&battle_state, PositionId(0));
+		let after = step(battle_state, vec![normal_hit], &registry, &mut rng).battle_state;
+		assert!(hp_at(&after, PositionId(0)) < before, "non-ground damage should still land");
+	}
+
+	/// Rough Skin punishes contact and ignores non-contact.
+	#[test]
+	fn rough_skin_punishes_contact_only() {
+		let mut rng = rand::rng();
+
+		let (registry, battle_state) = ability_battle(AbilityId::RoughSkin);
+		let attacker_max = battle_state.get_mon(PositionId(1)).unwrap().max_hp;
+		let contact_hit = Command::MoveAction(MoveCommand {
+			move_id: MoveId(0), // tackle, contact
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		let before = hp_at(&battle_state, PositionId(1));
+		let after = step(battle_state, vec![contact_hit], &registry, &mut rng).battle_state;
+		assert_eq!(before - hp_at(&after, PositionId(1)), attacker_max / 8);
+
+		// A special, non-contact move costs the attacker nothing.
+		let (registry, battle_state) = ability_battle(AbilityId::RoughSkin);
+		let ranged_hit = Command::MoveAction(MoveCommand {
+			move_id: MoveId(4), // mind_beam, no contact
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		let before = hp_at(&battle_state, PositionId(1));
+		let after = step(battle_state, vec![ranged_hit], &registry, &mut rng).battle_state;
+		assert_eq!(hp_at(&after, PositionId(1)), before);
+	}
+
+	/// Guts boosts a statused attacker, and cancels rather than compounds burn.
+	#[test]
+	fn guts_boosts_when_statused_and_ignores_burn() {
+		let mut rng = rand::rng();
+
+		let mut damage_with = |status: NonVolatileStatus| {
+			let (registry, mut battle_state) = ability_battle(AbilityId::Guts);
+			battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = status;
+			let before = hp_at(&battle_state, PositionId(1));
+			let attack = Command::MoveAction(MoveCommand {
+				move_id: MoveId(0),
+				user: PositionId(0),
+				targets: vec![PositionId(1)],
+			});
+			let after = step(battle_state, vec![attack], &registry, &mut rng).battle_state;
+			before - hp_at(&after, PositionId(1))
+		};
+
+		let healthy = damage_with(NonVolatileStatus::NoStatus);
+		let poisoned = damage_with(NonVolatileStatus::Poison);
+		let burned = damage_with(NonVolatileStatus::Burn);
+
+		// attack 100 vs defense 80, power 40 -> 50 base.
+		assert_eq!(healthy, 50);
+		// x1.5 while statused
+		assert_eq!(poisoned, 75);
+		// burn halves to 50 then Guts x3 -> the same 1.5x, not 0.75x
+		assert_eq!(burned, 75, "Guts should cancel the burn drop, not compound it");
+	}
+
+	/// Sand Stream sets weather when its holder arrives.
+	#[test]
+	fn sand_stream_summons_sand_on_switch_in() {
+		let mut rng = rand::rng();
+		let registry = registry_with_ability(AbilityId::SandStream);
+		let moves = vec![MoveId(0)];
+
+		// Position 0 starts as a plain creature; the Sand Stream holder is benched
+		// at roster 2, because there is no battle-start trigger yet.
+		let team0 = vec![
+			CreatureState::from_species_data(&frail_attacker(), moves.clone()),
+			CreatureState::from_species_data(registry.get_species_data(SpeciesId(2)), moves.clone()),
+		];
+		let team1 = vec![CreatureState::from_species_data(&fat_defender(), moves.clone())];
+		let battle_state = BattleState::from(team0, team1, vec![0, 1]);
+		assert!(battle_state.weather.is_none());
+
+		let switch = Command::Switch { current: PositionId(0), new: RosterId(2) };
+		let after = step(battle_state, vec![switch], &registry, &mut rng).battle_state;
+
+		match after.weather {
+			Some(TimedWeather { weather: Weather::Sandstorm, turns_left }) => {
+				// One turn of the five has already ticked off at TurnEnd.
+				assert_eq!(turns_left, 4);
+			}
+			other => panic!("expected a sandstorm, got {:?}", other),
+		}
+	}
+
+	/// Natural Cure clears status on the way out — which also proves the status
+	/// veto correctly exempts `NoStatus`, or the cure could never apply.
+	#[test]
+	fn natural_cure_clears_status_on_switch_out() {
+		let mut rng = rand::rng();
+		let registry = registry_with_ability(AbilityId::NaturalCure);
+		let moves = vec![MoveId(0)];
+
+		let team0 = vec![
+			CreatureState::from_species_data(registry.get_species_data(SpeciesId(2)), moves.clone()),
+			CreatureState::from_species_data(&fat_defender(), moves.clone()),
+		];
+		let team1 = vec![CreatureState::from_species_data(&fat_defender(), moves.clone())];
+		let mut battle_state = BattleState::from(team0, team1, vec![0, 1]);
+		battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+
+		let switch = Command::Switch { current: PositionId(0), new: RosterId(2) };
+		let after = step(battle_state, vec![switch], &registry, &mut rng).battle_state;
+
+		// roster 0 is the creature that left; it should be clean now.
+		assert_eq!(
+			after.roster.get_mon(RosterId(0)).unwrap().non_vol_status,
+			NonVolatileStatus::NoStatus
+		);
+	}
+
+	/*******************************
+	 *
+	 * PHYSICAL / SPECIAL SPLIT:
+	 *
+	 */
+
+	/// A special move scales off Special Attack vs Special Defense, so bending
+	/// the special stats changes its damage and bending Attack does not.
+	#[test]
+	fn special_moves_use_the_special_stats() {
+		let mut rng = rand::rng();
+		let mut registry = test_registry();
+		// Make the special spread differ sharply from the physical one, but keep
+		// the result under the target's 120 max HP so the assert measures damage
+		// rather than the target's remaining health.
+		registry.species_data[0].special_attack = 200;
+		registry.species_data[1].special_defense = 100;
+
+		let battle_state = test_battle_state();
+		let before = hp_at(&battle_state, PositionId(1));
+		let special = Command::MoveAction(MoveCommand {
+			move_id: MoveId(4), // mind_beam
+			user: PositionId(0),
+			targets: vec![PositionId(1)],
+		});
+		let after = step(battle_state, vec![special], &registry, &mut rng).battle_state;
+
+		// 200 * 40 / 100 = 80, versus the physical 100 * 40 / 80 = 50.
+		assert_eq!(before - hp_at(&after, PositionId(1)), 80);
+	}
+
+	/// A burn no longer weakens special attackers.
+	#[test]
+	fn burn_does_not_weaken_special_moves() {
+		let mut rng = rand::rng();
+		let registry = test_registry();
+
+		let mut damage = |burned: bool| {
+			let mut battle_state = test_battle_state();
+			if burned {
+				battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Burn;
+			}
+			let before = hp_at(&battle_state, PositionId(1));
+			let special = Command::MoveAction(MoveCommand {
+				move_id: MoveId(4),
+				user: PositionId(0),
+				targets: vec![PositionId(1)],
+			});
+			let after = step(battle_state, vec![special], &registry, &mut rng).battle_state;
+			before - hp_at(&after, PositionId(1))
+		};
+
+		assert_eq!(damage(false), damage(true));
+	}
+
+	/// A status move applies its effect and deals no damage at all.
+	#[test]
+	fn status_moves_deal_no_damage() {
+		let mut rng = rand::rng();
+		let registry = test_registry();
+		let battle_state = test_battle_state();
+		let before = hp_at(&battle_state, PositionId(1));
+
+		let glare = Command::MoveAction(MoveCommand {
+			move_id: MoveId(5), // hex_glare, always paralyses
+			user: PositionId(0),
+			targets: vec![PositionId(1)],
+		});
+		let after = step(battle_state, vec![glare], &registry, &mut rng).battle_state;
+
+		assert_eq!(hp_at(&after, PositionId(1)), before, "status moves must not chip");
+		assert_eq!(
+			after.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::Paralysis
+		);
+	}
+
+	/// Paralysis halves Speed, which flips the turn order between two creatures
+	/// that were close in speed.
+	#[test]
+	fn paralysis_halves_speed() {
+		let registry = test_registry();
+		let battle_state = {
+			let mut bs = test_battle_state();
+			bs.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Paralysis;
+			bs
+		};
+		let mut hooks = HookTable::new();
+		hooks.refresh(&battle_state, &registry);
+
+		let raw = battle_state.get_mon(PositionId(0)).unwrap().get_stat(Stat::Speed, &registry);
+		let effective = hooks.effective_stat(&battle_state, &registry, PositionId(0), Stat::Speed, raw);
+
+		assert_eq!(raw, 90);
+		assert_eq!(effective, 45);
 	}
 
 	/// Residual damage never over-kills into a second faint entry.

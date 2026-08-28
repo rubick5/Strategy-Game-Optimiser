@@ -41,15 +41,15 @@ static INERT_WEATHER: &[HookDef] = &[HookDef::reactive(
 /// Chip every creature standing in the sandstorm.
 ///
 /// There are no types in the model yet, so nothing is immune. When types land,
-/// the immunity belongs here as an early `continue`, or better, as a
-/// `TryApplyStatus`-style query so abilities like Sand Veil can join in.
+/// the immunity belongs here as an early `continue`, or better, as a query so
+/// abilities like Sand Veil can join in.
 fn sandstorm_damage(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, _rng: &mut dyn RngCore) {
 	for pos in ctx.battle_state.field.all_field_positions() {
 		let mon = match ctx.battle_state.get_mon(pos) {
 			Some(mon) => mon,
 			None => continue,
 		};
-		if mon.current_hp == 0 {
+		if !mon.is_alive() {
 			continue;
 		}
 		events.push_back(Event::DealDamage {
@@ -70,10 +70,7 @@ fn countdown(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, _r
 	let next = match ctx.battle_state.weather {
 		None => return,
 		Some(TimedWeather { turns_left: 0, .. }) | Some(TimedWeather { turns_left: 1, .. }) => None,
-		Some(TimedWeather {
-			weather,
-			turns_left,
-		}) => Some(TimedWeather {
+		Some(TimedWeather { weather, turns_left }) => Some(TimedWeather {
 			weather,
 			turns_left: turns_left - 1,
 		}),

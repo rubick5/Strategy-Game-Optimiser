@@ -1,6 +1,6 @@
 use rand::{RngCore, seq::IteratorRandom};
 
-use crate::{battle::state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId}, rl::moveslot::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
+use crate::{battle::state::{TEAM_SIZE, Team, battle_state::BattleState, field::PositionId, roster::RosterId}, rl::moveslot::{MAX_DECISION, MOVESLOT_COUNT, Moveslot}};
 
 #[derive(Clone, Copy)]
 pub struct Mask {
@@ -13,14 +13,31 @@ impl Mask {
 		let current_mon = battle_state.get_mon(pos).unwrap();
 		
 		if current_mon.current_hp != 0 {
-			for i in 0..current_mon.moves.len() {
+			// `.min(MOVESLOT_COUNT)` because `moveslots` is a fixed [bool; 4]:
+			// giving a creature a fifth move used to panic here rather than
+			// failing anywhere near the registry entry that caused it.
+			for i in 0..current_mon.moves.len().min(MOVESLOT_COUNT) {
 				moveslots[i] = true;
 			}
 		}
 
 		let mut switches = [true; TEAM_SIZE];
 
+		// Roster layout interleaves the teams, so team index i is roster i*2+offset.
+		let team_offset = match team { Team::Zero => 0, Team::One => 1 };
+		let active_roster_id = battle_state.field[pos];
+
 		for (index, creature) in battle_state.roster.team(team).iter().enumerate() {
+			// Switching to the creature that is already out was legal, and used to
+			// be a harmless no-op. It is not harmless any more: with switch hooks
+			// in play it became a free action that fires SwitchOut and SwitchIn —
+			// a Natural Cure holder could cure its own status every turn by
+			// "switching" to itself, which is exactly the kind of degenerate line
+			// a policy-gradient agent will find and exploit.
+			if RosterId(index * 2 + team_offset) == active_roster_id {
+				switches[index] = false;
+				continue;
+			}
 			switches[index] = match creature {
 				Some(poke_state) => poke_state.current_hp != 0,
 				None => false

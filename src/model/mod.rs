@@ -1,3 +1,4 @@
+pub mod ability;
 pub mod speciesdata;
 pub mod effect;
 pub mod pmove;

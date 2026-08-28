@@ -1,5 +1,6 @@
 //! Reactive hooks: the moments the engine broadcasts, and their payloads.
 
+use crate::battle::event::DamageSource;
 use crate::battle::state::field::PositionId;
 use crate::battle::state::non_volatile_status::NonVolatileStatus;
 use crate::model::pmove::MoveId;
@@ -15,7 +16,8 @@ use crate::model::pmove::MoveId;
 pub enum TriggerKind {
 	/// A creature has just arrived on the field.
 	SwitchIn = 0,
-	/// A creature is about to leave the field (fires *before* the field changes).
+	/// A creature is about to leave the field (fires *before* the field changes,
+	/// so the departing creature is still readable).
 	SwitchOut = 1,
 	/// A move has been selected and passed its can-I-move check.
 	BeforeMove = 2,
@@ -67,8 +69,8 @@ pub enum Trigger {
 		/// HP actually lost, which can be less than the damage rolled if the
 		/// target did not have that much HP left.
 		amount: u32,
-		/// Who caused it, when that is known. `None` for chip damage.
-		source: Option<PositionId>,
+		/// Attacker and move, when there was one. `None` for chip damage.
+		source: Option<DamageSource>,
 	},
 	AfterFaint {
 		pos: PositionId,

@@ -2,6 +2,18 @@ use crate::battle::state::{
 	battle_state::BattleState, field::PositionId, non_volatile_status::NonVolatileStatus,
 	roster::RosterId, weather::TimedWeather,
 };
+use crate::model::pmove::MoveId;
+
+/// Who caused a hit, and with what.
+///
+/// Carried on damage so `Trigger::AfterDamage` can name both. Rough Skin needs
+/// the attacker to hit back and the move to check whether it made contact —
+/// without this it would have to guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DamageSource {
+	pub attacker: PositionId,
+	pub move_id: MoveId,
+}
 
 /// The only way anything in the battle changes.
 ///
@@ -17,13 +29,8 @@ pub enum Event {
 	DealDamage {
 		amount: u32,
 		target: PositionId,
-		/// Who is responsible, when anyone is. `None` for chip damage from
-		/// weather or status.
-		///
-		/// Carried on the event so that `Trigger::AfterDamage` can name the
-		/// attacker — which is what a Rough Skin or Rocky Helmet hook needs in
-		/// order to hit back.
-		source: Option<PositionId>,
+		/// `None` for chip damage from weather or status.
+		source: Option<DamageSource>,
 	},
 	Heal {
 		amount: u32,
@@ -33,6 +40,7 @@ pub enum Event {
 		current: PositionId,
 		new: RosterId,
 	},
+	/// Applying `NoStatus` is how an effect *cures* a creature.
 	ApplyNonVolStatus {
 		status: NonVolatileStatus,
 		target: PositionId,

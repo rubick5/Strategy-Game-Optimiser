@@ -1,10 +1,11 @@
 //! Concrete effects, written as hooks.
 //!
 //! Each module here exposes a `hooks(...) -> &'static [HookDef]` function: given
-//! a status, a weather, (later) an ability or item, hand back the static list of
-//! moments it cares about. An effect's entire behaviour is one readable table
-//! plus the handlers it names — nothing about it is spread through the engine.
+//! a status, a weather, an ability, hand back the static list of moments it cares
+//! about. An effect's entire behaviour is one readable table plus the handlers it
+//! names — nothing about it is spread through the engine.
 
+pub mod ability;
 pub mod status;
 pub mod weather;
 

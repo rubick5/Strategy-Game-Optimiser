@@ -33,35 +33,29 @@ pub fn hooks(status: NonVolatileStatus) -> &'static [HookDef] {
 		NonVolatileStatus::Poison => POISON,
 		NonVolatileStatus::BadPoison => BAD_POISON,
 		NonVolatileStatus::Burn => BURN,
+		NonVolatileStatus::Paralysis => PARALYSIS,
 	}
 }
 
 static POISON: &[HookDef] = &[
 	HookDef::reactive(TriggerKind::Residual, order::POISON, poison_residual),
-	HookDef::query(
-		QueryKind::TryApplyStatus,
-		order::IMMUNITY,
-		block_second_status,
-	),
+	HookDef::query(QueryKind::TryApplyStatus, order::IMMUNITY, block_second_status),
 ];
 
 static BAD_POISON: &[HookDef] = &[
 	HookDef::reactive(TriggerKind::Residual, order::POISON, bad_poison_residual),
-	HookDef::query(
-		QueryKind::TryApplyStatus,
-		order::IMMUNITY,
-		block_second_status,
-	),
+	HookDef::query(QueryKind::TryApplyStatus, order::IMMUNITY, block_second_status),
 ];
 
 static BURN: &[HookDef] = &[
 	HookDef::reactive(TriggerKind::Residual, order::BURN, burn_residual),
 	HookDef::query(QueryKind::ModifyStat, order::MULTIPLIER, burn_halves_attack),
-	HookDef::query(
-		QueryKind::TryApplyStatus,
-		order::IMMUNITY,
-		block_second_status,
-	),
+	HookDef::query(QueryKind::TryApplyStatus, order::IMMUNITY, block_second_status),
+];
+
+static PARALYSIS: &[HookDef] = &[
+	HookDef::query(QueryKind::ModifyStat, order::MULTIPLIER, paralysis_halves_speed),
+	HookDef::query(QueryKind::TryApplyStatus, order::IMMUNITY, block_second_status),
 ];
 
 /// Shared body for every "chip a fraction of max HP" status.
@@ -98,13 +92,27 @@ fn burn_residual(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>
 /// This lives in the hook layer rather than in `CreatureState::get_stat` on
 /// purpose: `get_stat` is also what the RL encoder reads, and the encoder wants
 /// the creature's own stat, not a combat-time modified one.
+///
+/// Only Attack, not Special Attack — special moves scale off `SpecialAttack`
+/// now, so a burn no longer weakens them.
 fn burn_halves_attack(ctx: &HookCtx, query: &mut Query) {
-	if let Query::ModifyStat {
-		pos,
-		stat: Stat::Attack,
-		value,
-	} = query
-	{
+	if let Query::ModifyStat { pos, stat: Stat::Attack, value } = query {
+		if ctx.source.owner() == Some(*pos) {
+			*value = (*value / 2).max(1);
+		}
+	}
+}
+
+/// Paralysis halves Speed.
+///
+/// The other half of real paralysis — a 25% chance to lose the turn outright —
+/// is deliberately absent. `QueryFn` has no RNG by design (queries get folded
+/// through several handlers and must stay pure), so a random veto needs a
+/// volatile "immobilised this turn" flag set by a reactive hook at turn start,
+/// which `TryMove` could then check deterministically. That is the intended
+/// path once `CreatureState` grows volatile state.
+fn paralysis_halves_speed(ctx: &HookCtx, query: &mut Query) {
+	if let Query::ModifyStat { pos, stat: Stat::Speed, value } = query {
 		if ctx.source.owner() == Some(*pos) {
 			*value = (*value / 2).max(1);
 		}
@@ -116,8 +124,14 @@ fn burn_halves_attack(ctx: &HookCtx, query: &mut Query) {
 /// Worth noticing how this reads: the *existing* status is the thing that
 /// blocks, so it is the existing status that owns the rule. Nothing has to look
 /// up "does the target already have a status?" at the call site.
+///
+/// `NoStatus` is exempt — applying it is how an effect *cures*, and a status
+/// must not block its own removal (Natural Cure depends on this).
 fn block_second_status(ctx: &HookCtx, query: &mut Query) {
-	if let Query::TryApplyStatus { target, allowed, .. } = query {
+	if let Query::TryApplyStatus { target, status, allowed } = query {
+		if *status == NonVolatileStatus::NoStatus {
+			return;
+		}
 		if ctx.source.owner() == Some(*target) {
 			*allowed = false;
 		}

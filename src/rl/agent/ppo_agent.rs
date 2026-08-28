@@ -21,8 +21,6 @@ struct PPOStep {
 	mask: Mask,
 }
 
-// for ppo agent, we will model the battle's rewards as follows:
-// -1 point per turn, +30 for win, -30 for lose
 
 #[derive(Clone)]
 pub struct PPOAgent {
@@ -63,8 +61,11 @@ impl Agent for PPOAgent {
 
 impl PPOAgent {
 	pub fn init_random(rng: &mut dyn RngCore) -> Self {
-		let actor_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 32, 32, MAX_DECISION];
-		let critic_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 32, 32, 1];
+		// Widened from 32,32: the observation went from 97 inputs to a few
+		// hundred when abilities, weather, the special split and the active
+		// movesets were added, and 32 units was a hard bottleneck on that.
+		let actor_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 128, 128, MAX_DECISION];
+		let critic_layer_sizes: Vec<usize> = vec![TOTAL_ENCODING_LEN, 128, 128, 1];
 		Self {
 			actor: NeuralNet::gen_random(rng, &actor_layer_sizes, super::relu, super::relu_prime),
 			critic: NeuralNet::gen_random(rng, &critic_layer_sizes, super::relu, super::relu_prime),

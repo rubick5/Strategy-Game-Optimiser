@@ -1,6 +1,6 @@
 use rand::{Rng, RngCore};
 
-use crate::{battle::{event::Event, state::{field::PositionId, non_volatile_status::NonVolatileStatus::{Burn, Poison}}}, model::effect::Effect};
+use crate::{battle::{event::Event, state::{field::PositionId, non_volatile_status::NonVolatileStatus}}, model::effect::Effect};
 
 /// Roll an N-percent chance.
 ///
@@ -15,20 +15,17 @@ fn rolls_under(chance: u8, rng: &mut dyn RngCore) -> bool {
 // to something rather than fire at move time belongs in a hook
 // (see battle::hooks::effects), not in this match.
 pub(in crate::battle::engine) fn effect_to_event(effect: &Effect, target: PositionId, rng: &mut dyn RngCore) -> Option<Event> {
-	match effect {
-		Effect::PoisonChance { chance } => {
-			if rolls_under(*chance, rng) {
-				Some(Event::ApplyNonVolStatus { status: Poison, target })
-			} else {
-				None
-			}
-		}
-		Effect::BurnChance { chance } => {
-			if rolls_under(*chance, rng) {
-				Some(Event::ApplyNonVolStatus { status: Burn, target })
-			} else {
-				None
-			}
-		},
+	let status = match effect {
+		Effect::PoisonChance { chance } => (NonVolatileStatus::Poison, *chance),
+		Effect::BadPoisonChance { chance } => (NonVolatileStatus::BadPoison, *chance),
+		Effect::BurnChance { chance } => (NonVolatileStatus::Burn, *chance),
+		Effect::ParalysisChance { chance } => (NonVolatileStatus::Paralysis, *chance),
+	};
+
+	let (status, chance) = status;
+	if rolls_under(chance, rng) {
+		Some(Event::ApplyNonVolStatus { status, target })
+	} else {
+		None
 	}
 }
