@@ -11,7 +11,7 @@
 //! `effects/ability.rs`. The engine does not change — it is already broadcasting
 //! every moment an item could want.
 
-use crate::battle::hooks::effects::{ability, status, weather};
+use crate::battle::hooks::effects::{ability, status, volatile, weather};
 use crate::battle::hooks::handler::HookDef;
 use crate::battle::hooks::source::HookSource;
 use crate::battle::state::battle_state::BattleState;
@@ -48,6 +48,13 @@ pub fn collect(battle_state: &BattleState, registry: &Registry) -> Vec<Subscribe
 				status_defs,
 				speed,
 			));
+		}
+
+		for active in mon.volatiles.iter() {
+			let defs = volatile::hooks(active.kind);
+			if !defs.is_empty() {
+				out.push((HookSource::Volatile { pos, kind: active.kind }, defs, speed));
+			}
 		}
 
 		if let Some(ability_id) = mon.ability {

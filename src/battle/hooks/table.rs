@@ -16,6 +16,7 @@ use crate::battle::state::non_volatile_status::NonVolatileStatus;
 use crate::model::pmove::MoveId;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::Stat;
+use crate::model::typing::Effectiveness;
 
 /// One live subscription: a handler plus the context needed to order and run it.
 #[derive(Clone, Copy)]
@@ -217,6 +218,40 @@ impl HookTable {
 		};
 		self.run_query(&mut query, battle_state, registry);
 		query.value().unwrap_or(base)
+	}
+
+	/// The chart multiplier for a hit, after abilities have had their say.
+	pub fn final_effectiveness(
+		&self,
+		battle_state: &BattleState,
+		registry: &Registry,
+		attacker: PositionId,
+		target: PositionId,
+		move_id: MoveId,
+		base: Effectiveness,
+	) -> Effectiveness {
+		let mut query = Query::ModifyEffectiveness {
+			attacker,
+			target,
+			move_id,
+			effectiveness: base,
+		};
+		self.run_query(&mut query, battle_state, registry);
+		query.effectiveness().unwrap_or(base)
+	}
+
+	/// Whether `move_id` may affect `target` at all.
+	pub fn allows_hit(
+		&self,
+		battle_state: &BattleState,
+		registry: &Registry,
+		attacker: PositionId,
+		target: PositionId,
+		move_id: MoveId,
+	) -> bool {
+		let mut query = Query::TryHit { attacker, target, move_id, allowed: true };
+		self.run_query(&mut query, battle_state, registry);
+		query.allowed()
 	}
 
 	/// Whether a status is allowed to land on `target`.

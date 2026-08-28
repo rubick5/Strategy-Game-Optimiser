@@ -18,6 +18,7 @@ use crate::battle::state::non_volatile_status::NonVolatileStatus;
 use crate::battle::state::weather::{TimedWeather, Weather};
 use crate::model::ability::AbilityId;
 use crate::model::speciesdata::Stat;
+use crate::model::typing::{Effectiveness, Type};
 
 /// Rough Skin costs the attacker 1/8 of their max HP.
 const ROUGH_SKIN_FRACTION: u32 = 8;
@@ -40,22 +41,26 @@ pub fn hooks(ability: AbilityId) -> &'static [HookDef] {
 // ---------------------------------------------------------------------------
 
 static LEVITATE: &[HookDef] = &[HookDef::query(
-	QueryKind::ModifyDamage,
+	QueryKind::ModifyEffectiveness,
 	order::IMMUNITY,
 	levitate_blocks_ground,
 )];
 
-/// Ground-flagged moves do nothing to the holder.
+/// Ground-type moves do nothing to the holder.
 ///
-/// Runs at `IMMUNITY` order, i.e. first, so a later multiplier hook cannot
-/// resurrect damage that was supposed to be zero.
+/// This hooks the *effectiveness* query rather than the damage one, which is
+/// what makes it a true immunity: `execute_move` checks for a zero multiplier
+/// before rolling secondary effects, so a Ground move cannot burn or poison a
+/// Levitate holder on a hit that did nothing.
+///
+/// Runs at `IMMUNITY` order, i.e. first, so nothing downstream can resurrect it.
 fn levitate_blocks_ground(ctx: &HookCtx, query: &mut Query) {
-	if let Query::ModifyDamage { target, move_id, amount, .. } = query {
+	if let Query::ModifyEffectiveness { target, move_id, effectiveness, .. } = query {
 		if ctx.source.owner() != Some(*target) {
 			return;
 		}
-		if ctx.registry.get_move(*move_id).flags.ground {
-			*amount = 0;
+		if ctx.registry.get_move(*move_id).element == Type::Ground {
+			*effectiveness = Effectiveness::IMMUNE;
 		}
 	}
 }

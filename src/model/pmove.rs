@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::effect::Effect};
 use crate::model::speciesdata::Stat;
+use crate::model::typing::Type;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MoveId(pub u32);
@@ -43,22 +44,19 @@ impl MoveType {
 
 /// Properties hooks ask about.
 ///
-/// There is no type chart in this model, so these two flags carry the weight a
-/// type would: `contact` is what Rough Skin punishes, `ground` is what Levitate
-/// is immune to. Add flags here rather than adding branches to the engine.
+/// `ground` used to live here as a stand-in for a type, so Levitate had
+/// something to be immune to. Now that moves carry a real [`Type`], Levitate
+/// reads `element == Type::Ground` and the flag is gone. `contact` stays: it is
+/// a genuine move property, orthogonal to type, and Rough Skin needs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MoveFlags {
 	/// The user physically touches the target.
 	pub contact: bool,
-	/// A ground-based move. Levitate ignores these.
-	pub ground: bool,
 }
 
 impl MoveFlags {
-	pub const NONE: MoveFlags = MoveFlags { contact: false, ground: false };
-	pub const CONTACT: MoveFlags = MoveFlags { contact: true, ground: false };
-	pub const GROUND: MoveFlags = MoveFlags { contact: false, ground: true };
-	pub const CONTACT_GROUND: MoveFlags = MoveFlags { contact: true, ground: true };
+	pub const NONE: MoveFlags = MoveFlags { contact: false };
+	pub const CONTACT: MoveFlags = MoveFlags { contact: true };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +100,10 @@ impl MoveTargeting {
 
 pub struct PMove {
 	pub name: String,
+	/// Physical / Special / Status. Decides which stats are used.
 	pub move_type: MoveType,
+	/// Elemental type. Decides chart effectiveness and STAB.
+	pub element: Type,
 	pub move_targeting: MoveTargeting,
 	pub move_id: MoveId,
 	pub base_power: u32,

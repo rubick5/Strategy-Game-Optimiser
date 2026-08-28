@@ -104,18 +104,40 @@ fn opponent_team_replacements(agent: &mut dyn Agent, positions: &[PositionId], b
 /**
  * Returns the battle reward for playing out the battle, plus the actions and states that took place
  *
- * The learner is Team Zero and the opponent Team One, and each now receives the
- * board encoded from its *own* side. Before this, both read a Team-Zero-first
- * encoding, so the opponent was evaluating the learner's position rather than its
- * own — which quietly corrupted every self-play game.
+ * The learner takes Team Zero here; use [`play_out_battle_as`] to put it on the
+ * other side. Each player receives the board encoded from its *own* side.
+ * Before that, both read a Team-Zero-first encoding, so the opponent was
+ * evaluating the learner's position rather than its own — which quietly
+ * corrupted every self-play game.
  */
 pub fn play_out_battle(
-	mut battle: BattleState,
+	battle: BattleState,
 	registry: &Registry,
 	agent: &mut impl LearningAgent,
 	opponent: &mut dyn Agent,
 	rng: &mut dyn RngCore,
 ) -> PlayedBattle {
+	play_out_battle_as(battle, registry, agent, opponent, rng, Team::Zero)
+}
+
+/// As [`play_out_battle`], but the learner takes `learner_team`.
+///
+/// Worth having because with deterministic damage a fixed roster pairing is a
+/// foregone conclusion — one side simply wins. Measuring or training on one side
+/// only therefore measures the match-up, not the policy. Playing both sides
+/// cancels that out exactly.
+pub fn play_out_battle_as(
+	mut battle: BattleState,
+	registry: &Registry,
+	agent: &mut impl LearningAgent,
+	opponent: &mut dyn Agent,
+	rng: &mut dyn RngCore,
+	learner_team: Team,
+) -> PlayedBattle {
+	let opponent_team = learner_team.other();
+	let learner_pos = battle.field.team_positions(&learner_team)[0];
+	let opponent_pos = battle.field.team_positions(&opponent_team)[0];
+
 	let mut actions_and_states: Vec<Step> = Vec::new();
 	let mut turn_count = 0;
 	let mut step_request = StepRequest::NeedsActions;
@@ -124,13 +146,16 @@ pub fn play_out_battle(
 
 		match step_request {
 			StepRequest::NeedsActions => {
-				let agent_mask = Mask::from_battle_state(&Team::Zero, PositionId(0), &battle);
-				let opponent_mask = Mask::from_battle_state(&Team::One, PositionId(1), &battle);
+				let agent_mask = Mask::from_battle_state(&learner_team, learner_pos, &battle);
+				let opponent_mask = Mask::from_battle_state(&opponent_team, opponent_pos, &battle);
 
 				// Both views in one pass: the per-creature blocks are the same for
 				// either side, so this costs barely more than a single encoding.
-				let (agent_encoding, opponent_encoding) =
-					encoder::encode_both(&battle, registry, false);
+				let (zero_view, one_view) = encoder::encode_both(&battle, registry, false);
+				let (agent_encoding, opponent_encoding) = match learner_team {
+					Team::Zero => (zero_view, one_view),
+					Team::One => (one_view, zero_view),
+				};
 
 				let (mut agent_moveslot, probabilities) =
 					agent.choose_move_with_probs(&agent_encoding, &agent_mask, rng);
@@ -140,8 +165,8 @@ pub fn play_out_battle(
 				let opponent_moveslot = opponent.choose_move(&opponent_encoding, &opponent_mask, rng);
 
 				let actions = vec![
-					agent_moveslot.to_command(PositionId(0), &battle, registry),
-					opponent_moveslot.to_command(PositionId(1), &battle, registry),
+					agent_moveslot.to_command(learner_pos, &battle, registry),
+					opponent_moveslot.to_command(opponent_pos, &battle, registry),
 				];
 				actions_and_states.push(Step {
 					encoding: agent_encoding,
@@ -156,8 +181,8 @@ pub fn play_out_battle(
 			}
 			StepRequest::NeedsReplacements(positions) => {
 				// need to get the agent to tell us who to swap to
-				let agent_replacement_pos: Vec<PositionId> = positions.iter().filter(|PositionId(p)| p % 2 == 0).map(|p| *p).collect();
-				let opponent_replacement_pos: Vec<PositionId> = positions.iter().filter(|PositionId(p)| p % 2 == 1).map(|p| *p).collect();
+				let agent_replacement_pos: Vec<PositionId> = positions.iter().filter(|p| p.team() == learner_team).map(|p| *p).collect();
+				let opponent_replacement_pos: Vec<PositionId> = positions.iter().filter(|p| p.team() == opponent_team).map(|p| *p).collect();
 				let (mut agent_steps, agent_commands) = learner_team_replacements(agent, &agent_replacement_pos, &battle, registry, rng);
 				let opponent_replacements = opponent_team_replacements(opponent, &opponent_replacement_pos, &battle, registry, rng);
 
@@ -171,19 +196,12 @@ pub fn play_out_battle(
 					step_request,
 				} = engine::step(battle, all_commands, registry, rng);
 			}
-			engine::StepRequest::Finished(Outcome::Win { team: Team::Zero }) => {
+			engine::StepRequest::Finished(Outcome::Win { team }) => {
+				let won = team == learner_team;
 				return PlayedBattle {
 					steps: actions_and_states,
-					battle_reward: 1.0,
-					outcome: BattleEnd::Win,
-					turns: turn_count,
-				};
-			}
-			engine::StepRequest::Finished(Outcome::Win { team: Team::One }) => {
-				return PlayedBattle {
-					steps: actions_and_states,
-					battle_reward: -1.0,
-					outcome: BattleEnd::Loss,
+					battle_reward: if won { 1.0 } else { -1.0 },
+					outcome: if won { BattleEnd::Win } else { BattleEnd::Loss },
 					turns: turn_count,
 				};
 			}

@@ -5,6 +5,7 @@ use crate::model::pmove::MoveTargeting;
 use crate::model::pmove::MoveType;
 use crate::model::speciesdata::SpeciesDatum;
 use crate::model::speciesdata::SpeciesId;
+use crate::model::typing::{Type, Typing};
 use crate::model::pmove::PMove;
 use crate::model::pmove::MoveId;
 
@@ -23,8 +24,7 @@ impl Registry {
 	}
 
 	/// IDs 0-1 (species) and 0-2 (moves) are the originals, kept at their old
-	/// numbers and stats so `example_battles/normal_battle.json` still loads.
-	/// Everything new is appended.
+	/// numbers so `example_battles/normal_battle.json` still loads.
 	///
 	/// A note on movesets: `Mask` indexes a `[bool; MOVESLOT_COUNT]`, so **no
 	/// creature may be given more than 4 moves**.
@@ -35,91 +35,76 @@ impl Registry {
 		}
 	}
 
+	/// The roster is deliberately a rock-paper-scissors web rather than a
+	/// straight power ladder, because the point of the type chart is to make
+	/// *which* creature is out matter more than which has the bigger numbers:
+	///
+	/// * stonewarden (Rock/Ground) walls gustling's Electric but folds 4x to
+	///   Water and Grass — mireling and thornbeast punish it hard.
+	/// * gustling (Electric) is weak to Ground, and Levitate is exactly what
+	///   cancels that, so its ability is worth reading before you click a move.
+	/// * cinderfox (Fire) eats thornbeast (Grass) but drowns to mireling (Water).
+	/// * brackenox (Steel/Ground) resists a great deal and is immune to Electric
+	///   and Poison, but takes double from Fire and Water.
 	fn species() -> Vec<SpeciesDatum> {
 		vec![
-			// --- originals, untouched apart from the new special stats -------
+			// --- originals, kept for the old battle files ---------------------
 			SpeciesDatum {
 				name: String::from("frail_attacker"),
 				species_id: SpeciesId(0),
 				base_hp: 85,
-				attack: 100,
-				defense: 100,
-				special_attack: 100,
-				special_defense: 100,
-				speed: 90,
+				attack: 100, defense: 100, special_attack: 100, special_defense: 100, speed: 90,
+				typing: Typing::mono(Type::Normal),
 				ability: None,
 			},
 			SpeciesDatum {
 				name: String::from("fat_defender"),
 				species_id: SpeciesId(1),
 				base_hp: 1000,
-				attack: 80,
-				defense: 1000,
-				special_attack: 80,
-				special_defense: 1000,
-				speed: 30,
+				attack: 80, defense: 1000, special_attack: 80, special_defense: 1000, speed: 30,
+				typing: Typing::mono(Type::Normal),
 				ability: None,
 			},
 
-			// --- the new roster ----------------------------------------------
-			// Fast physical attacker that *wants* to be statused.
+			// --- the roster ---------------------------------------------------
 			SpeciesDatum {
 				name: String::from("cinderfox"),
 				species_id: SpeciesId(2),
-				base_hp: 100,
-				attack: 115,
-				defense: 70,
-				special_attack: 95,
-				special_defense: 70,
-				speed: 105,
+				base_hp: 120,
+				attack: 115, defense: 80, special_attack: 95, special_defense: 80, speed: 105,
+				typing: Typing::mono(Type::Fire),
 				ability: Some(AbilityId::Guts),
 			},
-			// Slow, bulky, turns the field hostile the moment it arrives.
 			SpeciesDatum {
 				name: String::from("stonewarden"),
 				species_id: SpeciesId(3),
 				base_hp: 150,
-				attack: 95,
-				defense: 125,
-				special_attack: 60,
-				special_defense: 95,
-				speed: 45,
+				attack: 105, defense: 125, special_attack: 60, special_defense: 95, speed: 45,
+				typing: Typing::dual(Type::Rock, Type::Ground),
 				ability: Some(AbilityId::SandStream),
 			},
-			// Special wall whose pivot is genuinely free.
 			SpeciesDatum {
 				name: String::from("mireling"),
 				species_id: SpeciesId(4),
-				base_hp: 130,
-				attack: 70,
-				defense: 100,
-				special_attack: 110,
-				special_defense: 105,
-				speed: 60,
+				base_hp: 135,
+				attack: 70, defense: 100, special_attack: 110, special_defense: 105, speed: 65,
+				typing: Typing::dual(Type::Water, Type::Poison),
 				ability: Some(AbilityId::NaturalCure),
 			},
-			// Punishes anything that touches it.
 			SpeciesDatum {
 				name: String::from("thornbeast"),
 				species_id: SpeciesId(5),
 				base_hp: 140,
-				attack: 110,
-				defense: 105,
-				special_attack: 60,
-				special_defense: 75,
-				speed: 70,
+				attack: 110, defense: 100, special_attack: 65, special_defense: 80, speed: 70,
+				typing: Typing::mono(Type::Grass),
 				ability: Some(AbilityId::RoughSkin),
 			},
-			// Fast special attacker with a hard immunity to read around.
 			SpeciesDatum {
 				name: String::from("gustling"),
 				species_id: SpeciesId(6),
-				base_hp: 95,
-				attack: 65,
-				defense: 60,
-				special_attack: 120,
-				special_defense: 85,
-				speed: 125,
+				base_hp: 120,
+				attack: 65, defense: 75, special_attack: 120, special_defense: 90, speed: 120,
+				typing: Typing::mono(Type::Electric),
 				ability: Some(AbilityId::Levitate),
 			},
 			// Deliberately ability-less: the control case, so the learner has
@@ -127,187 +112,201 @@ impl Registry {
 			SpeciesDatum {
 				name: String::from("brackenox"),
 				species_id: SpeciesId(7),
-				base_hp: 160,
-				attack: 100,
-				defense: 95,
-				special_attack: 75,
-				special_defense: 110,
-				speed: 50,
+				base_hp: 145,
+				attack: 100, defense: 105, special_attack: 75, special_defense: 100, speed: 55,
+				typing: Typing::dual(Type::Steel, Type::Ground),
 				ability: None,
 			},
 		]
 	}
 
 	fn moves() -> Vec<PMove> {
+		let attack = |id: u32, name: &str, element: Type, cat: MoveType, power: u32, prio: i8, flags: MoveFlags, effects: Vec<Effect>| PMove {
+			name: String::from(name),
+			move_id: MoveId(id),
+			move_targeting: MoveTargeting::Single,
+			move_type: cat,
+			element,
+			base_power: power,
+			effects,
+			base_prio: prio,
+			flags,
+		};
+
+		use MoveType::{Physical, Special, Status};
 		vec![
 			// --- originals, ids unchanged ------------------------------------
-			PMove {
-				name: String::from("tackle"),
-				move_id: MoveId(0),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 40,
-				effects: vec![],
-				base_prio: 0,
-				flags: MoveFlags::CONTACT,
-			},
-			PMove {
-				name: String::from("quick-attack"),
-				move_id: MoveId(1),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 25,
-				effects: vec![],
-				base_prio: 1,
-				flags: MoveFlags::CONTACT,
-			},
-			PMove {
-				name: String::from("poison attack"),
-				move_id: MoveId(2),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Status,
-				base_power: 0,
-				effects: vec![Effect::PoisonChance { chance: 100 }],
-				base_prio: 0,
-				flags: MoveFlags::NONE,
-			},
+			attack(0, "tackle", Type::Normal, Physical, 40, 0, MoveFlags::CONTACT, vec![]),
+			attack(1, "quick-attack", Type::Normal, Physical, 25, 1, MoveFlags::CONTACT, vec![]),
+			attack(2, "poison attack", Type::Poison, Status, 0, 0, MoveFlags::NONE,
+				vec![Effect::PoisonChance { chance: 100 }]),
 
-			// --- new moves ---------------------------------------------------
+			// --- attacking moves, one per relevant type ----------------------
+			attack(3, "flame lash", Type::Fire, Physical, 65, 0, MoveFlags::CONTACT,
+				vec![Effect::BurnChance { chance: 20 }]),
+			attack(4, "cinder blast", Type::Fire, Special, 80, 0, MoveFlags::NONE,
+				vec![Effect::BurnChance { chance: 10 }]),
+			attack(5, "stone edge", Type::Rock, Physical, 75, 0, MoveFlags::NONE, vec![]),
+			attack(6, "earth spike", Type::Ground, Physical, 70, 0, MoveFlags::CONTACT, vec![]),
+			attack(7, "mud wave", Type::Ground, Special, 60, 0, MoveFlags::NONE, vec![]),
+			attack(8, "venom fang", Type::Poison, Physical, 55, 0, MoveFlags::CONTACT,
+				vec![Effect::PoisonChance { chance: 30 }]),
+			attack(9, "toxic mist", Type::Poison, Status, 0, 0, MoveFlags::NONE,
+				vec![Effect::BadPoisonChance { chance: 90 }]),
+			attack(10, "static jolt", Type::Electric, Special, 65, 0, MoveFlags::NONE,
+				vec![Effect::ParalysisChance { chance: 30 }]),
+			attack(11, "numbing gaze", Type::Normal, Status, 0, 0, MoveFlags::NONE,
+				vec![Effect::ParalysisChance { chance: 100 }]),
+			attack(12, "aqua pulse", Type::Water, Special, 70, 0, MoveFlags::NONE, vec![]),
+			attack(13, "shadow dart", Type::Ghost, Physical, 45, 1, MoveFlags::CONTACT, vec![]),
+			attack(14, "thorn whip", Type::Grass, Physical, 65, 0, MoveFlags::CONTACT, vec![]),
+			attack(15, "frost bolt", Type::Ice, Special, 70, 0, MoveFlags::NONE, vec![]),
+			attack(16, "iron press", Type::Steel, Physical, 70, 0, MoveFlags::CONTACT, vec![]),
+			attack(17, "mind shatter", Type::Psychic, Special, 75, 0, MoveFlags::NONE, vec![]),
+			attack(18, "wing slash", Type::Flying, Physical, 60, 0, MoveFlags::CONTACT, vec![]),
+
+			// --- volatile-status moves --------------------------------------
+			// Damaging moves with volatile riders.
+			attack(19, "dizzy ray", Type::Psychic, Special, 55, 0, MoveFlags::NONE,
+				vec![Effect::ConfusionChance { chance: 40 }]),
+			attack(20, "rock smash", Type::Rock, Physical, 60, 0, MoveFlags::CONTACT,
+				vec![Effect::FlinchChance { chance: 30 }]),
+			// Pure status moves.
+			attack(21, "jeer", Type::Dark, Status, 0, 0, MoveFlags::NONE, vec![Effect::Taunt]),
+			attack(22, "sap seed", Type::Grass, Status, 0, 0, MoveFlags::NONE, vec![Effect::LeechSeed]),
+			attack(23, "baffle", Type::Ghost, Status, 0, 0, MoveFlags::NONE,
+				vec![Effect::ConfusionChance { chance: 100 }]),
+			// Self-targeting: `Oneself` makes the move's only target the user, so
+			// these need no separate self-effect plumbing.
 			PMove {
-				name: String::from("flame lash"),
-				move_id: MoveId(3),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 65,
-				effects: vec![Effect::BurnChance { chance: 20 }],
-				base_prio: 0,
-				flags: MoveFlags::CONTACT,
-			},
-			PMove {
-				name: String::from("cinder blast"),
-				move_id: MoveId(4),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Special,
-				base_power: 80,
-				effects: vec![Effect::BurnChance { chance: 10 }],
-				base_prio: 0,
-				flags: MoveFlags::NONE,
-			},
-			PMove {
-				name: String::from("stone edge"),
-				move_id: MoveId(5),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 75,
-				effects: vec![],
-				base_prio: 0,
-				flags: MoveFlags::NONE,
-			},
-			// Ground moves are what Levitate reads.
-			PMove {
-				name: String::from("earth spike"),
-				move_id: MoveId(6),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 70,
-				effects: vec![],
-				base_prio: 0,
-				flags: MoveFlags::CONTACT_GROUND,
-			},
-			PMove {
-				name: String::from("mud wave"),
-				move_id: MoveId(7),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Special,
-				base_power: 60,
-				effects: vec![],
-				base_prio: 0,
-				flags: MoveFlags::GROUND,
-			},
-			PMove {
-				name: String::from("venom fang"),
-				move_id: MoveId(8),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 55,
-				effects: vec![Effect::PoisonChance { chance: 30 }],
-				base_prio: 0,
-				flags: MoveFlags::CONTACT,
-			},
-			PMove {
-				name: String::from("toxic mist"),
-				move_id: MoveId(9),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Status,
+				name: String::from("decoy"),
+				move_id: MoveId(24),
+				move_targeting: MoveTargeting::Oneself,
+				move_type: Status,
+				element: Type::Normal,
 				base_power: 0,
-				effects: vec![Effect::BadPoisonChance { chance: 90 }],
+				effects: vec![Effect::Substitute],
 				base_prio: 0,
 				flags: MoveFlags::NONE,
 			},
 			PMove {
-				name: String::from("static jolt"),
-				move_id: MoveId(10),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Special,
-				base_power: 65,
-				effects: vec![Effect::ParalysisChance { chance: 30 }],
-				base_prio: 0,
-				flags: MoveFlags::NONE,
-			},
-			PMove {
-				name: String::from("numbing gaze"),
-				move_id: MoveId(11),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Status,
+				name: String::from("guard"),
+				move_id: MoveId(25),
+				move_targeting: MoveTargeting::Oneself,
+				move_type: Status,
+				element: Type::Normal,
+				// +4 so it resolves before the attack it is meant to block.
 				base_power: 0,
-				effects: vec![Effect::ParalysisChance { chance: 100 }],
-				base_prio: 0,
+				effects: vec![Effect::Protect],
+				base_prio: 4,
 				flags: MoveFlags::NONE,
-			},
-			PMove {
-				name: String::from("aqua pulse"),
-				move_id: MoveId(12),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Special,
-				base_power: 70,
-				effects: vec![],
-				base_prio: 0,
-				flags: MoveFlags::NONE,
-			},
-			PMove {
-				name: String::from("shadow dart"),
-				move_id: MoveId(13),
-				move_targeting: MoveTargeting::Single,
-				move_type: MoveType::Physical,
-				base_power: 45,
-				effects: vec![],
-				base_prio: 1,
-				flags: MoveFlags::CONTACT,
 			},
 		]
 	}
 
-	/// The intended moveset for each new species — four moves each, which is the
-	/// hard cap `Mask` imposes.
+	/// Four moves each — the cap `Mask` imposes.
 	///
-	/// Kept here rather than in the battle files so a team can be rebuilt in code
-	/// without hand-copying move ids.
+	/// Every set is STAB plus coverage, so the right click depends on what is
+	/// across from you. gustling in particular carries aqua pulse specifically
+	/// because its STAB does nothing at all to stonewarden.
 	pub fn default_moveset(species_id: SpeciesId) -> Vec<MoveId> {
-		match species_id.0 {
-			// cinderfox: strong physical + self-status synergy with Guts
-			2 => vec![MoveId(3), MoveId(13), MoveId(8), MoveId(5)],
-			// stonewarden: sand setter with rock/ground coverage
-			3 => vec![MoveId(5), MoveId(6), MoveId(0), MoveId(11)],
-			// mireling: special wall that spreads status and pivots it away
-			4 => vec![MoveId(12), MoveId(7), MoveId(9), MoveId(10)],
-			// thornbeast: contact punisher that also punishes contact back
-			5 => vec![MoveId(6), MoveId(0), MoveId(8), MoveId(5)],
-			// gustling: fast specials, immune to the ground moves it fears
-			6 => vec![MoveId(4), MoveId(10), MoveId(12), MoveId(1)],
-			// brackenox: no ability, plain coverage
-			7 => vec![MoveId(5), MoveId(0), MoveId(12), MoveId(11)],
+		let ids: Vec<u32> = match species_id.0 {
+			// cinderfox: Fire STAB, Rock coverage, priority, and a Substitute to
+			// set up behind — Guts wants to survive the status it profits from.
+			2 => vec![3, 5, 13, 24],
+			// stonewarden: Rock + Ground STAB, Steel coverage, and Protect to stall
+			// sand chip while the opponent takes it. brackenox's Taunt shuts that
+			// Protect off, which is the interaction worth having on the board.
+			3 => vec![5, 6, 16, 25],
+			// mireling: Water STAB, Ice coverage, bad poison, and Leech Seed —
+			// Natural Cure lets it pivot the poison away and come back clean.
+			4 => vec![12, 15, 9, 22],
+			// thornbeast: Grass STAB, Ground coverage, flinch pressure, Leech Seed.
+			5 => vec![14, 6, 20, 22],
+			// gustling: Electric STAB, Water for the Ground types it can't touch,
+			// and confusion off its high Special Attack.
+			6 => vec![10, 12, 19, 4],
+			// brackenox: Steel + Ground STAB, Rock coverage, Taunt to shut down
+			// the status-move users it walls.
+			7 => vec![16, 6, 5, 21],
 			// originals
-			_ => vec![MoveId(0), MoveId(1), MoveId(2)],
+			_ => vec![0, 1, 2],
+		};
+		ids.into_iter().map(MoveId).collect()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::rl::moveslot::MOVESLOT_COUNT;
+
+	/// `Mask` indexes a fixed [bool; MOVESLOT_COUNT], so an over-long moveset is
+	/// an out-of-bounds panic a long way from the registry entry that caused it.
+	#[test]
+	fn no_moveset_exceeds_the_slot_cap() {
+		let registry = Registry::load();
+		for species in &registry.species_data {
+			let moves = Registry::default_moveset(species.species_id);
+			assert!(
+				moves.len() <= MOVESLOT_COUNT,
+				"{} has {} moves, cap is {}",
+				species.name, moves.len(), MOVESLOT_COUNT
+			);
+		}
+	}
+
+	/// Every id referenced by a moveset must exist, and ids must match position.
+	#[test]
+	fn registry_ids_are_consistent() {
+		let registry = Registry::load();
+		for (i, mv) in registry.moves.iter().enumerate() {
+			assert_eq!(mv.move_id.0 as usize, i, "{} is filed under the wrong id", mv.name);
+		}
+		for (i, s) in registry.species_data.iter().enumerate() {
+			assert_eq!(s.species_id.0 as usize, i, "{} is filed under the wrong id", s.name);
+		}
+		for species in &registry.species_data {
+			for m in Registry::default_moveset(species.species_id) {
+				assert!(
+					(m.0 as usize) < registry.moves.len(),
+					"{} references move {} which does not exist",
+					species.name, m.0
+				);
+			}
+		}
+	}
+
+	/// Each roster member should get STAB off at least one of its moves,
+	/// otherwise its typing is decoration.
+	#[test]
+	fn every_roster_member_has_stab_coverage() {
+		let registry = Registry::load();
+		for species in registry.species_data.iter().filter(|s| s.species_id.0 >= 2) {
+			let has_stab = Registry::default_moveset(species.species_id)
+				.iter()
+				.any(|m| {
+					let mv = registry.get_move(*m);
+					mv.move_type.is_damaging() && species.typing.contains(mv.element)
+				});
+			assert!(has_stab, "{} has no STAB attack", species.name);
+		}
+	}
+
+	/// Every roster member needs an answer to something its STAB cannot touch,
+	/// or there is no move-choice decision to learn.
+	#[test]
+	fn every_roster_member_carries_off_type_coverage() {
+		let registry = Registry::load();
+		for species in registry.species_data.iter().filter(|s| s.species_id.0 >= 2) {
+			let off_type = Registry::default_moveset(species.species_id)
+				.iter()
+				.filter(|m| {
+					let mv = registry.get_move(**m);
+					mv.move_type.is_damaging() && !species.typing.contains(mv.element)
+				})
+				.count();
+			assert!(off_type >= 1, "{} has no coverage move", species.name);
 		}
 	}
 }
