@@ -4,6 +4,7 @@
 //! `deal_weather_damage` pair, including the `todo!()` that would have panicked
 //! the moment anything called it.
 
+use std::any::Any;
 use std::collections::VecDeque;
 
 use rand::RngCore;
@@ -14,6 +15,7 @@ use crate::battle::hooks::handler::{HookCtx, HookDef};
 use crate::battle::hooks::order;
 use crate::battle::hooks::trigger::{Trigger, TriggerKind};
 use crate::battle::state::weather::{TimedWeather, Weather};
+use crate::model::typing::Type;
 
 /// Sandstorm chips 1/16 max HP a turn.
 const SANDSTORM_FRACTION: u32 = 16;
@@ -45,7 +47,7 @@ fn sandstorm_damage(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Eve
 			Some(mon) => mon,
 			None => continue,
 		};
-		if !mon.is_alive() {
+		if !mon.is_alive() || mon.get_typing(ctx.registry).contains(Type::Rock) || mon.get_typing(ctx.registry).contains(Type::Ground) || mon.get_typing(ctx.registry).contains(Type::Steel) {
 			continue;
 		}
 		events.push_back(Event::DealDamage {
