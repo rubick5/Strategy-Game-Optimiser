@@ -274,6 +274,12 @@ fn execute_event(
 	rng: &mut dyn RngCore,
 ) {
 	match event {
+		Event::ChangeStats { target, stat_changes } => {
+			match battle_state.get_mut_mon(target) {
+				Some(s) => s.stat_changes.combine_in_place(&stat_changes),
+				None => {}
+			}
+		},
 		Event::DealDamage { amount, target, source } => {
 			//println!("dealing {} to {:?}", amount, target);
 			// A Substitute soaks damage from attacks before any of it reaches HP.
