@@ -10,7 +10,7 @@ macro_rules! stat_stages {
 		$($field:ident => $stat:ident ),*
 		$(,)?
 	) => {
-			#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+			#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Copy)]
 			pub struct StatStages {
 				$(
 					pub $field: i8,

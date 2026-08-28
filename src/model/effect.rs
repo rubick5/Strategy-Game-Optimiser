@@ -1,9 +1,12 @@
+use crate::battle::state::stat_stages::StatStages;
+
 /// Secondary effects a move rolls for when it is used.
 ///
 /// These fire at move time. Anything that needs to *react* to something later
 /// belongs in a hook (see `battle::hooks::effects`), not here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect {
+	SelfStatChanges { stat_changes: StatStages, chance: u8 },
 	PoisonChance { chance: u8 },
 	BadPoisonChance { chance: u8 },
 	BurnChance { chance: u8 },
@@ -24,6 +27,7 @@ impl Effect {
 	/// Short human label, for the battle UI.
 	pub fn label(&self) -> &'static str {
 		match self {
+			Effect::SelfStatChanges { .. } => "changes stats...",
 			Effect::PoisonChance { .. } => "poison",
 			Effect::BadPoisonChance { .. } => "bad poison",
 			Effect::BurnChance { .. } => "burn",
@@ -41,6 +45,7 @@ impl Effect {
 	pub fn chance(&self) -> u8 {
 		match self {
 			Effect::PoisonChance { chance }
+			| Effect::SelfStatChanges { stat_changes: _, chance}
 			| Effect::BadPoisonChance { chance }
 			| Effect::BurnChance { chance }
 			| Effect::ParalysisChance { chance }

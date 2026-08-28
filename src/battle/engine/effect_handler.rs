@@ -38,6 +38,15 @@ pub(in crate::battle::engine) fn effect_to_events(
 	let volatile = |volatile: Volatile| vec![Event::ApplyVolatile { target, volatile }];
 
 	match effect {
+		Effect::SelfStatChanges { stat_changes, chance } => {
+			if rolls_under(*chance, rng) {
+				vec![
+					Event::ChangeStats { target, stat_changes: *stat_changes }
+				]
+			} else {
+				vec![]
+			}
+		}
 		Effect::PoisonChance { chance } => {
 			if rolls_under(*chance, rng) { status(NonVolatileStatus::Poison) } else { vec![] }
 		}

@@ -1,3 +1,4 @@
+use crate::battle::state::stat_stages::StatStages;
 use crate::battle::state::{
 	battle_state::BattleState, field::PositionId, non_volatile_status::NonVolatileStatus,
 	roster::RosterId, weather::TimedWeather,
@@ -27,6 +28,10 @@ pub struct DamageSource {
 /// and still queue it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Event {
+	ChangeStats {
+		target: PositionId,
+		stat_changes: StatStages,
+	},
 	DealDamage {
 		amount: u32,
 		target: PositionId,
