@@ -35,10 +35,19 @@ pub enum TriggerKind {
 	Residual = 8,
 	/// The very end of the turn, after residuals have resolved.
 	TurnEnd = 9,
+	/// Before anyone acts.
+	///
+	/// This exists so that effects which *randomly cancel a move* have somewhere
+	/// to roll. Query hooks are deliberately RNG-free — they fold values and must
+	/// stay pure — so confusion and full paralysis roll here and set the
+	/// `Immobilised` volatile, which `TryMove` then reads deterministically.
+	///
+	/// It is also where turn-scoped volatiles from the previous turn are swept.
+	TurnStart = 10,
 }
 
 /// Number of variants in [`TriggerKind`]. Sizes the dispatch array.
-pub const TRIGGER_KIND_COUNT: usize = 10;
+pub const TRIGGER_KIND_COUNT: usize = 11;
 
 impl TriggerKind {
 	#[inline]
@@ -82,6 +91,7 @@ pub enum Trigger {
 	WeatherChanged,
 	Residual,
 	TurnEnd,
+	TurnStart,
 }
 
 impl Trigger {
@@ -98,6 +108,7 @@ impl Trigger {
 			Trigger::WeatherChanged => TriggerKind::WeatherChanged,
 			Trigger::Residual => TriggerKind::Residual,
 			Trigger::TurnEnd => TriggerKind::TurnEnd,
+			Trigger::TurnStart => TriggerKind::TurnStart,
 		}
 	}
 }

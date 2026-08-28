@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{battle::state::{non_volatile_status::NonVolatileStatus, stat_stages::StatStages}, model::{ability::AbilityId, pmove::MoveId, registry::Registry, speciesdata::{SpeciesDatum, SpeciesId, Stat}}};
+use crate::{battle::state::{non_volatile_status::NonVolatileStatus, stat_stages::StatStages, volatile::Volatiles}, model::{ability::AbilityId, pmove::MoveId, registry::Registry, speciesdata::{SpeciesDatum, SpeciesId, Stat}, typing::Typing}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatureState {
@@ -14,9 +14,17 @@ pub struct CreatureState {
 	/// (they come back with no ability, which is a legal state).
 	#[serde(default)]
 	pub ability: Option<AbilityId>,
+	/// Temporary conditions, wiped whenever this creature leaves the field.
+	/// `serde(default)` so battle states saved before volatiles existed load.
+	#[serde(default)]
+	pub volatiles: Volatiles,
 }
 
 impl CreatureState {
+
+	pub fn get_typing(&self, registry: &Registry) -> Typing {
+		todo!()
+	}
 	pub fn from_species_data(species_data: &SpeciesDatum, moves: Vec<MoveId>) -> Self {
 		CreatureState {
 			species_id: species_data.species_id,
@@ -26,6 +34,7 @@ impl CreatureState {
 			moves,
 			non_vol_status: NonVolatileStatus::NoStatus,
 			ability: species_data.ability,
+			volatiles: Volatiles::new(),
 		}
 	}
 

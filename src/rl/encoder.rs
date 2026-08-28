@@ -30,13 +30,16 @@ use crate::{
 	battle::state::{
 		TEAM_SIZE, Team, battle_state::BattleState, creature_state::CreatureState,
 		non_volatile_status::{NonVolatileStatus, STATUS_COUNT},
-		roster::RosterId, weather::Weather,
+		roster::RosterId,
+		volatile::{VOLATILE_COUNT, VolatileKind},
+		weather::Weather,
 	},
 	model::{
 		ability::{ABILITY_COUNT, AbilityId},
 		pmove::{MoveType, PMove},
 		registry::Registry,
 		speciesdata::{STAT_COUNT, Stat},
+		typing::{self, TYPE_COUNT, Type, Typing},
 	},
 	rl::moveslot::MOVESLOT_COUNT,
 };
@@ -56,12 +59,25 @@ const ACTIVE_COUNT: usize = 2;
 const WEATHER_COUNT: usize = 4;
 
 /// Per creature: 5 stats, HP fraction, 5 stat stages, status one-hot,
-/// ability one-hot.
+/// ability one-hot, type multi-hot, volatile multi-hot, substitute HP fraction.
+///
+/// The types and volatiles are multi-hots rather than one-hots because a
+/// creature can have several at once and their order carries no meaning.
+///
+/// Volatiles have to be here or they are hidden dynamics: an agent that gets
+/// Taunted would otherwise see its status move silently fail with no idea why.
 pub const MON_ENCODING_LEN: usize =
-	STAT_COUNT + 1 + STAT_COUNT + STATUS_COUNT + ABILITY_COUNT;
+	STAT_COUNT + 1 + STAT_COUNT + STATUS_COUNT + ABILITY_COUNT + TYPE_COUNT + VOLATILE_COUNT + 1;
 
-/// Per move slot: power, is-special, is-status, priority, rider chance.
-const MOVE_ENCODING_LEN: usize = 5;
+/// Per move slot: power, is-special, is-status, priority, rider chance, and the
+/// chart multiplier against the creature currently opposite.
+///
+/// That last one is the difference between the agent having to *infer* the type
+/// chart from outcomes and being able to read it. The raw types are in the
+/// encoding too, so it can still learn to generalise across match-ups it has not
+/// seen; this just means it does not have to rediscover 18x18 matchups from
+/// win/loss signal alone.
+const MOVE_ENCODING_LEN: usize = 6;
 /// The active creatures' movesets, mine first. Without this the agent picks
 /// "slot 2" with no idea what slot 2 does.
 const ACTIVE_MOVES_LEN: usize = ACTIVE_COUNT * MOVESLOT_COUNT * MOVE_ENCODING_LEN;
@@ -157,11 +173,16 @@ fn assemble(
 	}
 
 	// The first ACTIVE_COUNT entries are the creatures on the field, mine first.
+	// Each one's moves are scored against the creature opposite it.
 	for slot in 0..ACTIVE_COUNT {
 		let creature = order
 			.get(slot)
 			.and_then(|rid| battle_state.roster.get_mon(RosterId(*rid)));
-		y.extend(encode_moveset(creature, registry));
+		let opposing = order
+			.get(ACTIVE_COUNT - 1 - slot)
+			.and_then(|rid| battle_state.roster.get_mon(RosterId(*rid)))
+			.map(|c| registry.get_species_data(c.species_id).typing);
+		y.extend(encode_moveset(creature, registry, opposing));
 	}
 
 	y.extend(encode_field(battle_state, replacement));
@@ -212,23 +233,67 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 		v.push((creature.ability == Some(ability)) as u32 as f32);
 	}
 
+	// Type multi-hot: one or two slots set. Needed for switching decisions —
+	// "which of my bench resists what is in front of me" is unanswerable without
+	// it.
+	let typing = registry.get_species_data(creature.species_id).typing;
+	for t in Type::ALL {
+		v.push(typing.contains(t) as u32 as f32);
+	}
+
+	// Volatile multi-hot. Several can be active at once, so this is not a one-hot.
+	for kind in VolatileKind::ALL {
+		v.push(creature.volatiles.has(kind) as u32 as f32);
+	}
+
+	// How much of a Substitute is left, as a fraction of the HP it cost. The
+	// multi-hot above only says one is up; this says whether it is about to break.
+	let substitute_hp = creature.volatiles.value(VolatileKind::Substitute) as f32;
+	v.push(if creature.max_hp == 0 { 0.0 } else { substitute_hp / creature.max_hp as f32 });
+
 	debug_assert_eq!(v.len(), MON_ENCODING_LEN);
 	v
 }
 
-/// The four move slots of one active creature.
-fn encode_moveset(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
+/// The four move slots of one active creature, scored against `opposing`.
+fn encode_moveset(
+	op_mon: Option<&CreatureState>,
+	registry: &Registry,
+	opposing: Option<Typing>,
+) -> Vec<f32> {
+	let attacker_typing = op_mon.map(|c| registry.get_species_data(c.species_id).typing);
 	let mut v: Vec<f32> = Vec::with_capacity(MOVESLOT_COUNT * MOVE_ENCODING_LEN);
 	for slot in 0..MOVESLOT_COUNT {
 		let mv = op_mon
 			.and_then(|creature| creature.moves.get(slot))
 			.map(|move_id| registry.get_move(*move_id));
-		v.extend(encode_move(mv));
+		v.extend(encode_move(mv, attacker_typing, opposing));
 	}
 	v
 }
 
-fn encode_move(op_move: Option<&PMove>) -> Vec<f32> {
+/// The multiplier a move would land for, chart and STAB included.
+///
+/// This is the raw chart only — an ability that changes a match-up (Levitate)
+/// is not folded in, because the encoder has no hook table. The ability is in
+/// the encoding separately, so the interaction stays learnable.
+fn move_multiplier(mv: &PMove, attacker: Option<Typing>, defender: Option<Typing>) -> f32 {
+	if !mv.move_type.is_damaging() {
+		return 0.0;
+	}
+	let defender = match defender {
+		Some(d) => d,
+		None => return 0.0,
+	};
+	let mut eff = typing::effectiveness(mv.element, &defender);
+	if attacker.map_or(false, |a| a.contains(mv.element)) {
+		eff = eff.with_stab();
+	}
+	// 0, 0.25, 0.5, 1, 2, 4 (x1.5 with STAB) -> scaled into roughly 0..1.
+	eff.as_f32() / 4.0
+}
+
+fn encode_move(op_move: Option<&PMove>, attacker: Option<Typing>, defender: Option<Typing>) -> Vec<f32> {
 	let mv = match op_move {
 		Some(mv) => mv,
 		// Empty slot. Also what the mask disallows, so the agent gets a
@@ -249,6 +314,7 @@ fn encode_move(op_move: Option<&PMove>) -> Vec<f32> {
 		(mv.move_type == MoveType::Status) as u32 as f32,
 		mv.base_prio as f32 / PRIORITY_SCALAR,
 		best_chance as f32 / 100.0,
+		move_multiplier(mv, attacker, defender),
 	]
 }
 
@@ -463,11 +529,12 @@ mod tests {
 			SpeciesId(4),
 			Registry::default_moveset(SpeciesId(4)),
 		);
-		let encoded = encode_moveset(Some(&creature), &registry);
+		let opposing = Some(registry.get_species_data(SpeciesId(3)).typing);
+		let encoded = encode_moveset(Some(&creature), &registry, opposing);
 		assert_eq!(encoded.len(), MOVESLOT_COUNT * MOVE_ENCODING_LEN);
-		// mireling's slots are aqua pulse / mud wave / toxic mist / static jolt —
-		// a status move in slot 2 means that slot's is-status flag is set.
-		assert_eq!(encoded[2 * MOVE_ENCODING_LEN + 2], 1.0);
+		// mireling's slots are aqua pulse / frost bolt / static jolt / toxic mist —
+		// a status move in slot 3 means that slot's is-status flag is set.
+		assert_eq!(encoded[3 * MOVE_ENCODING_LEN + 2], 1.0);
 		assert_eq!(encoded[0 * MOVE_ENCODING_LEN + 2], 0.0);
 	}
 

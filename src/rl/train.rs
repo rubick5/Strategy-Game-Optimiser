@@ -2,7 +2,7 @@ use std::error::Error;
 
 use rand::{Rng, RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
-use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::BASELINE_LEARNING_RATE, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{BattleEnd, PlayedBattle, play_out_battle}, encoder, evaluate, mask::Mask}};
+use crate::{battle::state::{battle_state::BattleState, field::PositionId}, model::registry::Registry, rl::{agent::{Agent, LearningAgent, bot_agent::BASELINE_LEARNING_RATE, random_agent::RandomAgent, spam_agent::SpamAgent, train_config::TrainConfig}, battle_playout::{BattleEnd, PlayedBattle, play_out_battle_as}, encoder, evaluate, mask::Mask}};
 use crate::battle::state::Team;
 
 pub const EXPLORATION_CHANCE: f32 = 0.00;
@@ -120,7 +120,12 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 			let opponent = get_next_opponent(&mut static_opponents, &mut past_self_opponents, rng).ok_or("no opponents available...")?;
 			let battle: BattleState = battle_states.choose(rng).ok_or("no battle states available....")?.clone();
 
-			let played_battle = play_out_battle(battle, &registry, &mut agent, opponent, rng);
+			// Coin-flip which side the learner takes. With deterministic damage a
+			// fixed pairing is a foregone conclusion, so training only as Team
+			// Zero would teach the agent that roster's outcome rather than how to
+			// play. The perspective-aware encoder is what makes this possible.
+			let side = if rng.random_bool(0.5) { Team::Zero } else { Team::One };
+			let played_battle = play_out_battle_as(battle, &registry, &mut agent, opponent, rng, side);
 
 			window.record(&played_battle);
 			current_batch.push(played_battle);

@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use rand::{Rng as _, SeedableRng, rngs::StdRng};
-use strat_optimizer::{battle::state::{Team, battle_state::BattleState, creature_state::CreatureState}, game_window::game_window::BattleApp, model::{registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
+use strat_optimizer::{battle::{engine::engine::StepRequest, state::{Team, battle_state::BattleState, creature_state::CreatureState}}, game_window::game_window::BattleApp, model::{registry::Registry, speciesdata::SpeciesId}, rl::agent::bot_agent::BotAgent};
 
 /// A three-a-side match-up built from the new roster, so the demo actually shows
 /// the abilities off: Sand Stream vs Levitate, with a Rough Skin wall and a Guts
@@ -28,18 +28,19 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	let mut rng = rand::rng();
 	let rng = StdRng::seed_from_u64(rng.random());
 
+	start_battle_state(&registry).to_file("example_battles/start_battle.json").unwrap();
+
 	// NOTE: an agent.json trained before the encoder change has the wrong input
 	// width and will not work here. Retrain first (`cargo run --bin
 	// strat-optimizer`), then point this at the fresh file.
 	let file_name = args.get(1).map(|s| s.as_str()).unwrap_or("agent.json");
-	let battle_app = BattleApp::<StdRng> {
-		battle: start_battle_state(&registry),
-		agent: Box::new(BotAgent::relu_from_file(file_name)?),
-		log: vec![],
+	let battle_app = BattleApp::<StdRng>::new(
+		BattleState::from_file("example_battles/start_battle.json").unwrap(),
+		Box::new(BotAgent::relu_from_file(file_name)?),
 		registry,
-		player_team: Team::One,
-		rng: rng,
-		};
+		Team::One,
+		rng,
+	);
 	let _eframe_result = eframe::run_native(
 		"battle",
 		eframe::NativeOptions::default(),

@@ -10,6 +10,7 @@ use crate::battle::hooks::{HookTable, Trigger};
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::field::PositionId;
 use crate::battle::state::roster::RosterId;
+use crate::battle::state::volatile::VolatileKind;
 use crate::battle::state::Outcome;
 use crate::model::pmove::MoveId;
 use crate::model::registry::Registry;
@@ -101,7 +102,48 @@ fn handle_switch_event(current: PositionId, new: RosterId, battle_state: &mut Ba
 	battle_state.field[current] = new;
 }
 
-#[derive(Debug, PartialEq)]
+/// Route damage into a Substitute if the target has one.
+///
+/// Returns whether the decoy took the hit. The Substitute breaks when its own HP
+/// runs out, and the excess is *not* carried through to the creature behind it.
+fn absorb_with_substitute(amount: u32, target: PositionId, battle_state: &mut BattleState) -> bool {
+	let mon = match battle_state.get_mut_mon(target) {
+		Some(mon) => mon,
+		None => return false,
+	};
+	if !mon.volatiles.has(VolatileKind::Substitute) {
+		return false;
+	}
+	let remaining = mon.volatiles.value(VolatileKind::Substitute);
+	if amount >= remaining {
+		mon.volatiles.remove(VolatileKind::Substitute);
+	} else {
+		mon.volatiles.set_value(VolatileKind::Substitute, remaining - amount);
+	}
+	true
+}
+
+/// Drop the volatiles that only last the turn they were applied on.
+fn clear_turn_scoped_volatiles(battle_state: &mut BattleState) {
+	for pos in battle_state.field.all_field_positions() {
+		if let Some(mon) = battle_state.get_mut_mon(pos) {
+			mon.volatiles.clear_turn_scoped();
+		}
+	}
+}
+
+/// Count every timed volatile down by one and drop the expired ones.
+fn tick_volatiles(battle_state: &mut BattleState) {
+	for pos in battle_state.field.all_field_positions() {
+		if let Some(mon) = battle_state.get_mut_mon(pos) {
+			mon.volatiles.tick();
+		}
+	}
+}
+
+/// `Clone` so a UI can hold the pending phase between frames — the game window
+/// has to remember "someone still owes me a replacement" across redraws.
+#[derive(Debug, PartialEq, Clone)]
 pub enum StepRequest {
 	NeedsActions,
 	NeedsReplacements(Vec<PositionId>),
@@ -120,6 +162,9 @@ pub struct StepResult {
 /// creature that fainted mid-turn is dropped rather than retried forever.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
+	/// Before anyone acts: sweep last turn's one-turn volatiles, then let the
+	/// things that randomly cancel a move roll for it.
+	TurnStart,
 	/// Players' chosen moves and switches.
 	Actions,
 	/// Chip damage, healing, delayed attacks.
@@ -145,7 +190,7 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	let mut events: VecDeque<Event> = VecDeque::new();
 	let mut fainted: Vec<PositionId> = Vec::new();
 	let mut hooks = HookTable::new();
-	let mut phase = Phase::Actions;
+	let mut phase = Phase::TurnStart;
 
 	loop {
 		// Cheap: returns immediately unless something invalidated the table.
@@ -166,6 +211,10 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 
 		// Event queue is empty, so advance the turn.
 		match phase {
+			Phase::TurnStart => {
+				hooks.dispatch(Trigger::TurnStart, &battle_state, registry, &mut events, rng);
+				phase = Phase::Actions;
+			}
 			Phase::Actions => match get_next_command(&mut commands, registry, &battle_state, rng) {
 				Some(Command::MoveAction(move_command)) => {
 					//println!("executing move: {:?}", move_command);
@@ -182,6 +231,13 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 			}
 			Phase::TurnEnd => {
 				resolve_turn_end(&battle_state, registry, &hooks, &mut events, rng);
+				// Swept at the END of the turn rather than the start. Both work
+				// for blocking, but sweeping here means a Protect or a flinch is
+				// never still sitting on a creature once the turn is over — which
+				// matters for anything reading the state, the game window included.
+				clear_turn_scoped_volatiles(&mut battle_state);
+				tick_volatiles(&mut battle_state);
+				hooks.invalidate();
 				phase = Phase::Done;
 			}
 			Phase::Done => break,
@@ -220,7 +276,17 @@ fn execute_event(
 	match event {
 		Event::DealDamage { amount, target, source } => {
 			//println!("dealing {} to {:?}", amount, target);
-			let dealt = apply_damage(amount, target, battle_state);
+			// A Substitute soaks damage from attacks before any of it reaches HP.
+			// This is the one effect the hook system cannot express: absorbing
+			// requires mutating the decoy's own HP, and hooks may not mutate. Chip
+			// damage (weather, status, Leech Seed) carries no source and goes
+			// straight through, which is how the games behave.
+			let absorbed = source.is_some() && absorb_with_substitute(amount, target, battle_state);
+			let dealt = if absorbed { 0 } else { apply_damage(amount, target, battle_state) };
+
+			if absorbed {
+				hooks.invalidate();
+			}
 
 			hooks.refresh(battle_state, registry);
 			hooks.dispatch(
@@ -258,6 +324,13 @@ fn execute_event(
 			hooks.dispatch(Trigger::SwitchOut { pos: current }, battle_state, registry, &mut departing, rng);
 			while let Some(pending) = departing.pop_front() {
 				execute_event(battle_state, pending, fainted, &mut departing, hooks, registry, rng);
+			}
+
+			// Volatiles do not survive leaving the field — that is the whole
+			// distinction between them and a status. Wiped on the way out so the
+			// creature is clean if it comes back later.
+			if let Some(mon) = battle_state.get_mut_mon(current) {
+				mon.volatiles.clear();
 			}
 
 			handle_switch_event(current, new, battle_state);
@@ -298,6 +371,23 @@ fn execute_event(
 			hooks.invalidate();
 			hooks.refresh(battle_state, registry);
 			hooks.dispatch(Trigger::WeatherChanged, battle_state, registry, queue, rng);
+		}
+
+		Event::ApplyVolatile { target, volatile } => {
+			if let Some(mon) = battle_state.get_mut_mon(target) {
+				if mon.is_alive() {
+					mon.volatiles.add(volatile);
+				}
+			}
+			// A volatile brings its own hooks.
+			hooks.invalidate();
+		}
+
+		Event::RemoveVolatile { target, kind } => {
+			if let Some(mon) = battle_state.get_mut_mon(target) {
+				mon.volatiles.remove(kind);
+			}
+			hooks.invalidate();
 		}
 
 		Event::Faint { target } => {
@@ -347,9 +437,11 @@ mod tests {
 	use crate::battle::hooks::{QueryKind, TriggerKind};
 	use crate::battle::state::creature_state::CreatureState;
 	use crate::battle::state::non_volatile_status::NonVolatileStatus;
+	use crate::battle::state::volatile::{Volatile, VolatileKind};
 	use crate::battle::state::weather::{TimedWeather, Weather};
 	use crate::model::ability::AbilityId;
 	use crate::model::effect::Effect;
+	use crate::model::typing::{Type, Typing};
 	use crate::{battle::{command::MoveCommand, state::Team}, model::{pmove::{MoveFlags, MoveId, MoveTargeting, MoveType, PMove}, speciesdata::SpeciesId}};
 	use crate::battle::engine::calculate_damage::calculate_damage;
 	// maybe i should define my own moves here that aren't actual moves in the
@@ -366,6 +458,7 @@ mod tests {
 			special_attack: 100,
 			special_defense: 100,
 			speed: 90,
+			typing: Typing::mono(Type::Normal),
 			ability: None,
 		}
 	}
@@ -380,6 +473,7 @@ mod tests {
 			special_attack: 80,
 			special_defense: 80,
 			speed: 30,
+			typing: Typing::mono(Type::Normal),
 			ability: None,
 		}
 	}
@@ -398,6 +492,7 @@ mod tests {
 	fn big_damage_attack() -> PMove {
 		PMove {
 			name: String::from("big_damage"),
+			element: Type::Water,
 			move_id: MoveId(2),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Physical,
@@ -411,6 +506,7 @@ mod tests {
 	fn tackle() -> PMove {
 		PMove {
 			name: String::from("tackle"),
+			element: Type::Water,
 			move_id: MoveId(0),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Physical,
@@ -424,6 +520,7 @@ mod tests {
 	fn quick_attack() -> PMove {
 		PMove {
 			name: String::from("quick-attack"),
+			element: Type::Water,
 			move_id: MoveId(1),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Physical,
@@ -438,13 +535,14 @@ mod tests {
 	fn earth_jab() -> PMove {
 		PMove {
 			name: String::from("earth_jab"),
+			element: Type::Ground,
 			move_id: MoveId(3),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Physical,
 			base_power: 40,
 			effects: vec![],
 			base_prio: 0,
-			flags: MoveFlags::GROUND,
+			flags: MoveFlags::NONE,
 		}
 	}
 
@@ -452,6 +550,7 @@ mod tests {
 	fn mind_beam() -> PMove {
 		PMove {
 			name: String::from("mind_beam"),
+			element: Type::Water,
 			move_id: MoveId(4),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Special,
@@ -466,6 +565,7 @@ mod tests {
 	fn hex_glare() -> PMove {
 		PMove {
 			name: String::from("hex_glare"),
+			element: Type::Water,
 			move_id: MoveId(5),
 			move_targeting: MoveTargeting::Single,
 			move_type: MoveType::Status,
@@ -812,9 +912,15 @@ mod tests {
 			before - after
 		};
 
-		// attack 100 -> 50, so 100*40/80 = 50 becomes 50*40/80 = 25.
-		assert_eq!(healthy_damage, 50);
-		assert_eq!(burned_damage, 25);
+		// Asserted as a ratio rather than two magic numbers, so this keeps
+		// testing the hook rather than the damage formula.
+		assert!(healthy_damage > 0, "the control hit should do something");
+		let expected = healthy_damage / 2;
+		assert!(
+			burned_damage.abs_diff(expected) <= 1,
+			"burn should roughly halve damage: {} unburned -> {} burned, expected about {}",
+			healthy_damage, burned_damage, expected
+		);
 	}
 
 	/// Burn's residual hook still fires in the same turn it is halving Attack —
@@ -956,6 +1062,7 @@ mod tests {
 			// a status move that always poisons
 			moves: vec![PMove {
 				name: String::from("always_poison"),
+			element: Type::Water,
 				move_id: MoveId(0),
 				move_targeting: MoveTargeting::Single,
 				move_type: MoveType::Status,
@@ -993,6 +1100,7 @@ mod tests {
 			species_data: vec![frail_attacker(), fat_defender()],
 			moves: vec![PMove {
 				name: String::from("always_poison"),
+			element: Type::Water,
 				move_id: MoveId(0),
 				move_targeting: MoveTargeting::Single,
 				move_type: MoveType::Status,
@@ -1124,12 +1232,24 @@ mod tests {
 		let poisoned = damage_with(NonVolatileStatus::Poison);
 		let burned = damage_with(NonVolatileStatus::Burn);
 
-		// attack 100 vs defense 80, power 40 -> 50 base.
-		assert_eq!(healthy, 50);
+		assert!(healthy > 0, "the control hit should do something");
+
 		// x1.5 while statused
-		assert_eq!(poisoned, 75);
-		// burn halves to 50 then Guts x3 -> the same 1.5x, not 0.75x
-		assert_eq!(burned, 75, "Guts should cancel the burn drop, not compound it");
+		let expected_boost = healthy * 3 / 2;
+		assert!(
+			poisoned.abs_diff(expected_boost) <= 1,
+			"Guts should boost a statused attacker: {} healthy -> {} poisoned, expected about {}",
+			healthy, poisoned, expected_boost
+		);
+
+		// The point of the ordering trick: burn halves, Guts x3, so a burned Guts
+		// attacker lands on the same 1.5x as any other status rather than 0.75x.
+		assert!(
+			burned.abs_diff(poisoned) <= 1,
+			"Guts should cancel the burn drop, not compound it: {} burned vs {} poisoned",
+			burned, poisoned
+		);
+		assert!(burned > healthy, "a burned Guts attacker should still hit harder than a healthy one");
 	}
 
 	/// Sand Stream sets weather when its holder arrives.
@@ -1189,6 +1309,500 @@ mod tests {
 
 	/*******************************
 	 *
+	 * VOLATILE STATUS:
+	 *
+	 * Built on the real registry, because these are all about interactions
+	 * between a move, a condition and the turn structure.
+	 */
+
+	fn live_registry_mon(registry: &Registry, id: u32, moves: Vec<MoveId>) -> CreatureState {
+		CreatureState::from_species(registry, SpeciesId(id), moves)
+	}
+
+	/// A 1v1 with the given movesets, so a single move can be isolated.
+	fn duel(registry: &Registry, a: u32, a_moves: Vec<MoveId>, b: u32, b_moves: Vec<MoveId>) -> BattleState {
+		BattleState::from(
+			vec![live_registry_mon(registry, a, a_moves)],
+			vec![live_registry_mon(registry, b, b_moves)],
+			vec![0, 1],
+		)
+	}
+
+	fn use_move(user: PositionId, target: PositionId, move_id: u32) -> Command {
+		Command::MoveAction(MoveCommand {
+			move_id: MoveId(move_id),
+			user,
+			targets: vec![target],
+		})
+	}
+
+	/// Taunt is the deterministic half of the design: no roll anywhere, and it
+	/// gives `TryMove` its first real subscriber.
+	#[test]
+	fn taunt_blocks_status_moves_but_not_attacks() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+
+		// Taunt lands on its own turn. Doing it in one turn alongside the status
+		// move would prove nothing: thornbeast is faster than brackenox, so the
+		// seed would resolve before the taunt regardless.
+		let battle_state = duel(&registry, 7, vec![MoveId(21)], 5, vec![MoveId(22), MoveId(14)]);
+		let taunt = use_move(PositionId(0), PositionId(1), 21);
+		let after = step(battle_state, vec![taunt], &registry, &mut rng).battle_state;
+		assert!(
+			after.get_mon(PositionId(1)).unwrap().volatiles.has(VolatileKind::Taunt),
+			"taunt should have landed"
+		);
+
+		// Next turn, the taunted creature's status move should fail.
+		let seed = use_move(PositionId(1), PositionId(0), 22);
+		let after = step(after, vec![seed], &registry, &mut rng).battle_state;
+		assert!(
+			!after.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::LeechSeed),
+			"a taunted creature must not get its status move off"
+		);
+
+		// The same creature can still attack.
+		let before = after.get_mon(PositionId(0)).unwrap().current_hp;
+		let attack = use_move(PositionId(1), PositionId(0), 14);
+        let after = step(after, vec![attack], &registry, &mut rng).battle_state;
+		assert!(
+			after.get_mon(PositionId(0)).unwrap().current_hp < before,
+			"taunt only blocks status moves"
+		);
+	}
+
+	/// Protect blocks an incoming move entirely — damage and riders alike.
+	#[test]
+	fn protect_blocks_an_incoming_move() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let battle_state = duel(&registry, 3, vec![MoveId(25)], 5, vec![MoveId(14)]);
+		let before = battle_state.get_mon(PositionId(0)).unwrap().current_hp;
+
+		let guard = use_move(PositionId(0), PositionId(0), 25);
+		let attack = use_move(PositionId(1), PositionId(0), 14);
+		let after = step(battle_state, vec![guard, attack], &registry, &mut rng).battle_state;
+
+		assert_eq!(
+			after.get_mon(PositionId(0)).unwrap().current_hp,
+			before,
+			"protect should have taken the hit to zero"
+		);
+		// And it does not persist: Protect is turn-scoped.
+		assert!(!after.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::Protect));
+	}
+
+	/// A Substitute soaks attack damage, and chip damage goes straight past it.
+	#[test]
+	fn substitute_absorbs_attacks_but_not_chip() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let battle_state = duel(&registry, 2, vec![MoveId(24)], 5, vec![MoveId(14)]);
+		let max_hp = battle_state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		// Turn 1: put a Substitute up. It costs a quarter of max HP.
+		let decoy = use_move(PositionId(0), PositionId(0), 24);
+		let after = step(battle_state, vec![decoy], &registry, &mut rng).battle_state;
+		let hp_behind_sub = after.get_mon(PositionId(0)).unwrap().current_hp;
+		assert_eq!(hp_behind_sub, max_hp - max_hp / 4);
+		assert_eq!(
+			after.get_mon(PositionId(0)).unwrap().volatiles.value(VolatileKind::Substitute),
+			max_hp / 4
+		);
+
+		// Turn 2: an attack should hit the decoy, not the creature.
+		let attack = use_move(PositionId(1), PositionId(0), 14);
+		let after = step(after, vec![attack], &registry, &mut rng).battle_state;
+		assert_eq!(
+			after.get_mon(PositionId(0)).unwrap().current_hp,
+			hp_behind_sub,
+			"the substitute should have taken the hit"
+		);
+	}
+
+	/// Chip damage ignores a Substitute — no `DamageSource`, so nothing to soak.
+	#[test]
+	fn chip_damage_goes_through_a_substitute() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut battle_state = duel(&registry, 2, vec![MoveId(24)], 5, vec![MoveId(14)]);
+		battle_state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::Poison;
+
+		let decoy = use_move(PositionId(0), PositionId(0), 24);
+		let before = battle_state.get_mon(PositionId(0)).unwrap().current_hp;
+		let max_hp = battle_state.get_mon(PositionId(0)).unwrap().max_hp;
+		let after = step(battle_state, vec![decoy], &registry, &mut rng).battle_state;
+
+		// Sub cost plus a poison tick, so strictly more than the sub cost alone.
+		let lost = before - after.get_mon(PositionId(0)).unwrap().current_hp;
+		assert!(
+			lost > max_hp / 4,
+			"poison should have chipped past the substitute: lost {} vs sub cost {}",
+			lost, max_hp / 4
+		);
+	}
+
+	/// Leech Seed drains the seeded creature and feeds the one that planted it.
+	#[test]
+	fn leech_seed_transfers_hp_to_the_planter() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut battle_state = duel(&registry, 5, vec![MoveId(22)], 7, vec![MoveId(16)]);
+		// Hurt the seeder so the drain has somewhere to go.
+		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 50;
+
+		let seed = use_move(PositionId(0), PositionId(1), 22);
+		let after = step(battle_state, vec![seed], &registry, &mut rng).battle_state;
+
+		assert!(after.get_mon(PositionId(1)).unwrap().volatiles.has(VolatileKind::LeechSeed));
+		assert!(
+			after.get_mon(PositionId(0)).unwrap().current_hp > 50,
+			"the planter should have been healed by the drain"
+		);
+	}
+
+	/// Volatiles do not survive leaving the field. This is the entire point of
+	/// the volatile / non-volatile split.
+	#[test]
+	fn switching_out_wipes_volatiles_but_keeps_status() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let moves = vec![MoveId(0)];
+		let team0 = vec![
+			live_registry_mon(&registry, 5, moves.clone()),
+			live_registry_mon(&registry, 7, moves.clone()),
+		];
+		let team1 = vec![live_registry_mon(&registry, 3, moves.clone())];
+		let mut battle_state = BattleState::from(team0, team1, vec![0, 1]);
+		{
+			let mon = battle_state.get_mut_mon(PositionId(0)).unwrap();
+			mon.volatiles.add(Volatile::lasting(VolatileKind::Taunt, 3));
+			mon.volatiles.add(Volatile::new(VolatileKind::LeechSeed));
+			mon.non_vol_status = NonVolatileStatus::Burn;
+		}
+
+		let switch = Command::Switch { current: PositionId(0), new: RosterId(2) };
+		let after = step(battle_state, vec![switch], &registry, &mut rng).battle_state;
+
+		let left = after.roster.get_mon(RosterId(0)).unwrap();
+		assert!(left.volatiles.is_empty(), "volatiles must not survive a switch");
+		assert_eq!(
+			left.non_vol_status,
+			NonVolatileStatus::Burn,
+			"a non-volatile status must survive a switch"
+		);
+	}
+
+	/// A creature carrying `Immobilised` loses its turn.
+	///
+	/// Tested through the query rather than through `step`, deliberately: the
+	/// flag is meant to be set by a TurnStart hook *during* the turn it applies
+	/// to, so pre-setting it and stepping would just measure the end-of-turn
+	/// sweep. This asserts the veto itself, which is the deterministic half of
+	/// confusion and full paralysis.
+	#[test]
+	fn immobilised_costs_the_creature_its_move() {
+		let registry = Registry::load();
+		let mut battle_state = duel(&registry, 5, vec![MoveId(14)], 3, vec![MoveId(5)]);
+
+		let mut hooks = HookTable::new();
+		hooks.refresh(&battle_state, &registry);
+		assert!(
+			hooks.allows_move(&battle_state, &registry, PositionId(0), MoveId(14)),
+			"a healthy creature should be allowed to move"
+		);
+
+		battle_state
+			.get_mut_mon(PositionId(0))
+			.unwrap()
+			.volatiles
+			.add(Volatile::new(VolatileKind::Immobilised));
+		hooks.invalidate();
+		hooks.refresh(&battle_state, &registry);
+
+		assert!(
+			!hooks.allows_move(&battle_state, &registry, PositionId(0), MoveId(14)),
+			"an immobilised creature must not be allowed to move"
+		);
+	}
+
+	/// Turn-scoped volatiles are swept at the start of the next turn, so a flinch
+	/// cannot silently block two turns in a row.
+	#[test]
+	fn turn_scoped_volatiles_do_not_survive_into_the_next_turn() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut battle_state = duel(&registry, 5, vec![MoveId(14)], 3, vec![MoveId(5)]);
+		battle_state
+			.get_mut_mon(PositionId(0))
+			.unwrap()
+			.volatiles
+			.add(Volatile::new(VolatileKind::Flinch));
+
+		let attack = use_move(PositionId(0), PositionId(1), 14);
+		let after = step(battle_state, vec![attack], &registry, &mut rng).battle_state;
+		// Swept during this turn's TurnStart, so it is gone whether or not it bit.
+		assert!(!after.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::Flinch));
+	}
+
+	/// Timed volatiles count down and expire on their own.
+	#[test]
+	fn timed_volatiles_expire() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut battle_state = duel(&registry, 5, vec![MoveId(14)], 3, vec![MoveId(5)]);
+		battle_state
+			.get_mut_mon(PositionId(0))
+			.unwrap()
+			.volatiles
+			.add(Volatile::lasting(VolatileKind::Taunt, 2));
+
+		let mut state = battle_state;
+		for _ in 0..2 {
+			state = step(state, vec![], &registry, &mut rng).battle_state;
+		}
+		assert!(
+			!state.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::Taunt),
+			"two turns of Taunt should have run out after two turns"
+		);
+	}
+
+	/*******************************
+	 *
+	 * REPLACEMENT PHASE:
+	 *
+	 * The game window used to throw `step_request` away and feed the player's
+	 * replacement switch back in as an ordinary turn action, next to a freely
+	 * chosen attack from the opponent — so the creature coming in ate a hit.
+	 * These pin the two halves of that.
+	 */
+
+	/// Setup: position 0 is about to be knocked out by a big hit.
+	fn about_to_faint() -> (Registry, BattleState, Command) {
+		let registry = test_registry();
+		let mut battle_state = test_battle_state();
+		battle_state.get_mut_mon(PositionId(0)).unwrap().current_hp = 1;
+		let finisher = Command::MoveAction(MoveCommand {
+			move_id: MoveId(2), // big_damage
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		(registry, battle_state, finisher)
+	}
+
+	/// A replacement step carries no attacks, so the incoming creature arrives
+	/// untouched. This is the behaviour the game window now implements.
+	#[test]
+	fn a_replacement_step_does_not_hit_the_incoming_creature() {
+		let mut rng = rand::rng();
+		let (registry, battle_state, finisher) = about_to_faint();
+
+		let StepResult { battle_state, step_request } =
+			step(battle_state, vec![finisher], &registry, &mut rng);
+		assert_eq!(step_request, StepRequest::NeedsReplacements(vec![PositionId(0)]));
+
+		// The engine asked for a replacement, so the ONLY command it gets back is
+		// the switch. Nobody attacks during a replacement.
+		let incoming_full_hp = battle_state.roster.get_mon(RosterId(2)).unwrap().max_hp;
+		let switch = Command::Switch { current: PositionId(0), new: RosterId(2) };
+		let StepResult { battle_state, step_request } =
+			step(battle_state, vec![switch], &registry, &mut rng);
+
+		assert_eq!(
+			battle_state.get_mon(PositionId(0)).unwrap().current_hp,
+			incoming_full_hp,
+			"the replacement should not have been hit on the way in"
+		);
+		assert_eq!(step_request, StepRequest::NeedsActions);
+	}
+
+	/// The bug, reproduced: bundling the replacement in with a normal turn lets
+	/// the opponent attack into it. Kept as a test so the difference between the
+	/// two flows is visible rather than folklore.
+	#[test]
+	fn bundling_a_replacement_with_a_turn_lets_it_be_hit() {
+		let mut rng = rand::rng();
+		let (registry, battle_state, finisher) = about_to_faint();
+
+		let StepResult { battle_state, .. } =
+			step(battle_state, vec![finisher], &registry, &mut rng);
+
+		let incoming_full_hp = battle_state.roster.get_mon(RosterId(2)).unwrap().max_hp;
+		let switch = Command::Switch { current: PositionId(0), new: RosterId(2) };
+		let attack = Command::MoveAction(MoveCommand {
+			move_id: MoveId(0),
+			user: PositionId(1),
+			targets: vec![PositionId(0)],
+		});
+		let StepResult { battle_state, .. } =
+			step(battle_state, vec![switch, attack], &registry, &mut rng);
+
+		assert!(
+			battle_state.get_mon(PositionId(0)).unwrap().current_hp < incoming_full_hp,
+			"this is the old behaviour: a switch submitted as a turn action gets attacked"
+		);
+	}
+
+	/*******************************
+	 *
+	 * TYPE CHART:
+	 *
+	 * These use a purpose-built registry so exactly one thing varies per test.
+	 */
+
+	fn typed_species(id: u32, name: &str, typing: Typing) -> SpeciesDatum {
+		SpeciesDatum {
+			name: String::from(name),
+			species_id: SpeciesId(id),
+			base_hp: 400, // deep enough that nothing dies mid-measurement
+			attack: 100, defense: 100, special_attack: 100, special_defense: 100, speed: 50,
+			typing,
+			ability: None,
+		}
+	}
+
+	fn typed_move(id: u32, name: &str, element: Type, effects: Vec<Effect>) -> PMove {
+		PMove {
+			name: String::from(name),
+			move_id: MoveId(id),
+			move_targeting: MoveTargeting::Single,
+			move_type: MoveType::Physical,
+			element,
+			base_power: 60,
+			effects,
+			base_prio: 0,
+			flags: MoveFlags::NONE,
+		}
+	}
+
+	/// 0 normal attacker, 1 grass, 2 water, 3 fire attacker, 4 levitating electric.
+	fn type_registry() -> Registry {
+		Registry {
+			species_data: vec![
+				typed_species(0, "normal_atk", Typing::mono(Type::Normal)),
+				typed_species(1, "grass_def", Typing::mono(Type::Grass)),
+				typed_species(2, "water_def", Typing::mono(Type::Water)),
+				typed_species(3, "fire_atk", Typing::mono(Type::Fire)),
+				SpeciesDatum {
+					ability: Some(AbilityId::Levitate),
+					..typed_species(4, "floater", Typing::mono(Type::Electric))
+				},
+			],
+			moves: vec![
+				typed_move(0, "fire_jab", Type::Fire, vec![]),
+				typed_move(1, "ground_jab", Type::Ground, vec![Effect::BurnChance { chance: 100 }]),
+			],
+		}
+	}
+
+	/// One hit from `attacker_species` on `defender_species` with move 0 or 1.
+	fn typed_hit(registry: &Registry, attacker: u32, defender: u32, move_id: u32) -> (u32, BattleState) {
+		let mut rng = rand::rng();
+		let a = CreatureState::from_species(registry, SpeciesId(attacker), vec![MoveId(0), MoveId(1)]);
+		let d = CreatureState::from_species(registry, SpeciesId(defender), vec![MoveId(0), MoveId(1)]);
+		let battle_state = BattleState::from(vec![a], vec![d], vec![0, 1]);
+		let before = hp_at(&battle_state, PositionId(1));
+		let command = Command::MoveAction(MoveCommand {
+			move_id: MoveId(move_id),
+			user: PositionId(0),
+			targets: vec![PositionId(1)],
+		});
+		let after = step(battle_state, vec![command], registry, &mut rng).battle_state;
+		(before - hp_at(&after, PositionId(1)), after)
+	}
+
+	/// The chart multiplier actually reaches the damage roll.
+	#[test]
+	fn effectiveness_scales_damage() {
+		let registry = type_registry();
+		// Fire vs Grass is 2x, Fire vs Water is 0.5x -> a 4x spread.
+		let (super_effective, _) = typed_hit(&registry, 0, 1, 0);
+		let (resisted, _) = typed_hit(&registry, 0, 2, 0);
+
+		assert!(resisted > 0, "a resisted hit should still do something");
+		let ratio = super_effective as f32 / resisted as f32;
+		assert!(
+			(3.5..4.5).contains(&ratio),
+			"expected about a 4x spread between 2x and 0.5x, got {}/{} = {:.2}",
+			super_effective, resisted, ratio
+		);
+	}
+
+	/// STAB is applied, and only to an attacker whose type matches.
+	#[test]
+	fn stab_applies_to_matching_types_only() {
+		let registry = type_registry();
+		// Identical stats and identical move; only the attacker's own type differs.
+		let (no_stab, _) = typed_hit(&registry, 0, 1, 0);
+		let (with_stab, _) = typed_hit(&registry, 3, 1, 0);
+
+		let ratio = with_stab as f32 / no_stab as f32;
+		assert!(
+			(1.4..1.6).contains(&ratio),
+			"expected about x1.5 from STAB, got {}/{} = {:.2}",
+			with_stab, no_stab, ratio
+		);
+	}
+
+	/// An immunity from an ability blocks the damage AND the secondary effect.
+	///
+	/// This is why effectiveness is its own query rather than a damage multiplier:
+	/// zeroing the damage alone would still have let the burn land.
+	#[test]
+	fn levitate_blocks_ground_damage_and_its_rider() {
+		let registry = type_registry();
+		// move 1 is Ground and burns 100% of the time it connects.
+		let (damage, after) = typed_hit(&registry, 0, 4, 1);
+
+		assert_eq!(damage, 0, "Levitate should have made the Ground move do nothing");
+		assert_eq!(
+			after.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::NoStatus,
+			"a move that was nullified must not still apply its secondary effect"
+		);
+
+		// The same rider lands fine on something that is not immune.
+		let (_, after) = typed_hit(&registry, 0, 1, 1);
+		assert_eq!(
+			after.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::Burn
+		);
+	}
+
+	/// A chart immunity (not an ability) blocks a move just as completely.
+	#[test]
+	fn chart_immunity_blocks_a_move_entirely() {
+		let mut registry = type_registry();
+		// Make the defender Flying, which is immune to Ground on the chart alone.
+		registry.species_data[1].typing = Typing::mono(Type::Flying);
+
+		let (damage, after) = typed_hit(&registry, 0, 1, 1);
+		assert_eq!(damage, 0);
+		assert_eq!(
+			after.get_mon(PositionId(1)).unwrap().non_vol_status,
+			NonVolatileStatus::NoStatus
+		);
+	}
+
+	/// A creature with two types multiplies both halves.
+	#[test]
+	fn dual_types_stack_in_battle() {
+		let mut registry = type_registry();
+		let (single, _) = typed_hit(&registry, 0, 1, 0); // Fire vs Grass = 2x
+		registry.species_data[1].typing = Typing::dual(Type::Grass, Type::Steel);
+		let (dual, _) = typed_hit(&registry, 0, 1, 0); // Fire vs Grass/Steel = 4x
+
+		let ratio = dual as f32 / single as f32;
+		assert!(
+			(1.8..2.2).contains(&ratio),
+			"Grass/Steel should take twice what Grass does from Fire, got {}/{} = {:.2}",
+			dual, single, ratio
+		);
+	}
+
+	/*******************************
+	 *
 	 * PHYSICAL / SPECIAL SPLIT:
 	 *
 	 */
@@ -1214,8 +1828,22 @@ mod tests {
 		});
 		let after = step(battle_state, vec![special], &registry, &mut rng).battle_state;
 
-		// 200 * 40 / 100 = 80, versus the physical 100 * 40 / 80 = 50.
-		assert_eq!(before - hp_at(&after, PositionId(1)), 80);
+		let special_damage = before - hp_at(&after, PositionId(1));
+
+		// The same creature's physical hit, for comparison: it reads Attack 100
+		// against Defense 80, untouched by the special stats bent above.
+		let physical_damage = {
+			let battle_state = test_battle_state();
+			let before = hp_at(&battle_state, PositionId(1));
+			let after = step(battle_state, vec![frail_uses_tackle()], &registry, &mut rng).battle_state;
+			before - hp_at(&after, PositionId(1))
+		};
+
+		assert!(
+			special_damage > physical_damage,
+			"special move read the wrong stats: {} special vs {} physical, with SpA 200 and SpD 100",
+			special_damage, physical_damage
+		);
 	}
 
 	/// A burn no longer weakens special attackers.

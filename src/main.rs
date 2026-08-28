@@ -13,9 +13,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 	// A battle state is picked at random per battle, so listing several exposes
 	// the agent to more than one match-up.
 	let battle_states = vec![
+		"example_battles/start_battle.json",
+		/*
 		"example_battles/ability_showcase.json",
 		"example_battles/sand_vs_levitate.json",
 		"example_battles/status_duel.json",
+		"example_battles/coverage_test.json", */
 	];
 	let mut rng = StdRng::seed_from_u64(871);
 	//let agent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);

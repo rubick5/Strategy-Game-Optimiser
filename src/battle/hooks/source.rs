@@ -7,6 +7,7 @@
 
 use crate::battle::state::field::PositionId;
 use crate::battle::state::non_volatile_status::NonVolatileStatus;
+use crate::battle::state::volatile::VolatileKind;
 
 /// The entity a hook subscription belongs to.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,6 +25,11 @@ pub enum HookSource {
 	///
 	/// Not produced yet — see the seam in [`providers`](super::providers).
 	Item { pos: PositionId },
+	/// A volatile condition on the creature at `pos`.
+	Volatile {
+		pos: PositionId,
+		kind: VolatileKind,
+	},
 	/// The current field weather. Not owned by any one creature.
 	Weather,
 }
@@ -38,6 +44,7 @@ impl HookSource {
 			HookSource::Status { pos, .. } => Some(*pos),
 			HookSource::Ability { pos } => Some(*pos),
 			HookSource::Item { pos } => Some(*pos),
+			HookSource::Volatile { pos, .. } => Some(*pos),
 			HookSource::Weather => None,
 		}
 	}

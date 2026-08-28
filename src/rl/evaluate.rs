@@ -11,7 +11,9 @@
 //! Evaluation here is deliberately frozen on every axis that can drift:
 //!
 //! * the opponents are the stateless ones (random, spam), which cannot improve
-//! * the battle states are the same ones every time
+//! * the battle states are the same ones every time, and each is played from
+//!   BOTH sides — with deterministic damage a fixed roster pairing is simply
+//!   won by one side, so a one-sided score measures the match-up, not the agent
 //! * the RNG is seeded from a constant, so the *same* battles are replayed at
 //!   every checkpoint, and a change in the number is a change in the agent
 //!
@@ -24,7 +26,8 @@ use rand::rngs::StdRng;
 use crate::battle::state::battle_state::BattleState;
 use crate::model::registry::Registry;
 use crate::rl::agent::{Agent, LearningAgent, random_agent::RandomAgent, spam_agent::SpamAgent};
-use crate::rl::battle_playout::{BattleEnd, play_out_battle};
+use crate::battle::state::Team;
+use crate::rl::battle_playout::{BattleEnd, play_out_battle_as};
 
 /// Fixed seed, so every checkpoint plays the same battles.
 const EVAL_SEED: u64 = 20_240_601;
@@ -89,7 +92,10 @@ pub fn evaluate(
 				Some(battle) => battle.clone(),
 				None => break,
 			};
-			let played = play_out_battle(battle, registry, agent, opponent.as_mut(), &mut rng);
+			// Alternate sides. Over an even `battles_each` every position is
+			// played from both seats, so a lopsided roster cancels out exactly.
+			let side = if i % 2 == 0 { Team::Zero } else { Team::One };
+			let played = play_out_battle_as(battle, registry, agent, opponent.as_mut(), &mut rng, side);
 			total_turns += played.turns;
 			match played.outcome {
 				BattleEnd::Win => wins += 1,

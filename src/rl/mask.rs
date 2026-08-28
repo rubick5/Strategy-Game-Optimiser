@@ -8,6 +8,10 @@ pub struct Mask {
 }
 
 impl Mask {
+	// returns true if all actions are mapped to false
+	pub fn is_empty(&self) -> bool {
+		self.allowed.iter().all(|b| !*b)
+	}
 	pub fn from_battle_state(team: &Team, pos: PositionId, battle_state: &BattleState) -> Self {
 		let mut moveslots = [false; MOVESLOT_COUNT];
 		let current_mon = battle_state.get_mon(pos).unwrap();

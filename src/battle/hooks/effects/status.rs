@@ -7,7 +7,7 @@
 
 use std::collections::VecDeque;
 
-use rand::RngCore;
+use rand::{Rng, RngCore};
 
 use crate::battle::event::Event;
 use crate::battle::hooks::effects::fraction_of_max;
@@ -16,6 +16,7 @@ use crate::battle::hooks::order;
 use crate::battle::hooks::query::{Query, QueryKind};
 use crate::battle::hooks::trigger::{Trigger, TriggerKind};
 use crate::battle::state::non_volatile_status::NonVolatileStatus;
+use crate::battle::state::volatile::{Volatile, VolatileKind};
 use crate::model::speciesdata::Stat;
 
 /// Poison costs 1/8 max HP a turn.
@@ -25,6 +26,8 @@ const POISON_FRACTION: u32 = 8;
 const BAD_POISON_FRACTION: u32 = 16;
 /// Burn costs 1/16 max HP a turn.
 const BURN_FRACTION: u32 = 16;
+/// Chance per turn that paralysis costs the creature its move entirely.
+const FULL_PARALYSIS_CHANCE: u8 = 25;
 
 /// The hooks a given status installs.
 pub fn hooks(status: NonVolatileStatus) -> &'static [HookDef] {
@@ -55,6 +58,7 @@ static BURN: &[HookDef] = &[
 
 static PARALYSIS: &[HookDef] = &[
 	HookDef::query(QueryKind::ModifyStat, order::MULTIPLIER, paralysis_halves_speed),
+	HookDef::reactive(TriggerKind::TurnStart, order::DEFAULT, full_paralysis_roll),
 	HookDef::query(QueryKind::TryApplyStatus, order::IMMUNITY, block_second_status),
 ];
 
@@ -103,14 +107,24 @@ fn burn_halves_attack(ctx: &HookCtx, query: &mut Query) {
 	}
 }
 
-/// Paralysis halves Speed.
+/// The other half of paralysis: a flat chance to lose the turn.
 ///
-/// The other half of real paralysis — a 25% chance to lose the turn outright —
-/// is deliberately absent. `QueryFn` has no RNG by design (queries get folded
-/// through several handlers and must stay pure), so a random veto needs a
-/// volatile "immobilised this turn" flag set by a reactive hook at turn start,
-/// which `TryMove` could then check deterministically. That is the intended
-/// path once `CreatureState` grows volatile state.
+/// Rolled on `TurnStart` and expressed as the `Immobilised` volatile, exactly as
+/// confusion does, so the veto itself stays a pure query.
+fn full_paralysis_roll(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, rng: &mut dyn RngCore) {
+	let pos = match ctx.source.owner() {
+		Some(pos) => pos,
+		None => return,
+	};
+	if rng.random_range(1..=100) <= FULL_PARALYSIS_CHANCE {
+		events.push_back(Event::ApplyVolatile {
+			target: pos,
+			volatile: Volatile::new(VolatileKind::Immobilised),
+		});
+	}
+}
+
+/// Paralysis halves Speed.
 fn paralysis_halves_speed(ctx: &HookCtx, query: &mut Query) {
 	if let Query::ModifyStat { pos, stat: Stat::Speed, value } = query {
 		if ctx.source.owner() == Some(*pos) {

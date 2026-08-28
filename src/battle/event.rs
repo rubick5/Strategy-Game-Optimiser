@@ -2,6 +2,7 @@ use crate::battle::state::{
 	battle_state::BattleState, field::PositionId, non_volatile_status::NonVolatileStatus,
 	roster::RosterId, weather::TimedWeather,
 };
+use crate::battle::state::volatile::{Volatile, VolatileKind};
 use crate::model::pmove::MoveId;
 
 /// Who caused a hit, and with what.
@@ -53,6 +54,15 @@ pub enum Event {
 	/// that `AfterFaint` broadcasts exactly once per faint.
 	Faint {
 		target: PositionId,
+	},
+	/// Add a volatile, replacing any existing one of the same kind.
+	ApplyVolatile {
+		target: PositionId,
+		volatile: Volatile,
+	},
+	RemoveVolatile {
+		target: PositionId,
+		kind: VolatileKind,
 	},
 }
 

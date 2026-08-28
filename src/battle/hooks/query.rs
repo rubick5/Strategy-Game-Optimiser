@@ -9,6 +9,7 @@ use crate::battle::state::field::PositionId;
 use crate::battle::state::non_volatile_status::NonVolatileStatus;
 use crate::model::pmove::MoveId;
 use crate::model::speciesdata::Stat;
+use crate::model::typing::Effectiveness;
 
 /// The *identity* of a query, with no payload. Indexes the query dispatch array.
 ///
@@ -23,10 +24,14 @@ pub enum QueryKind {
 	TryApplyStatus = 2,
 	/// Whether a creature is allowed to execute the move it picked.
 	TryMove = 3,
+	/// The type-chart multiplier, before it is applied to damage.
+	ModifyEffectiveness = 4,
+	/// Whether a move is allowed to affect one particular target at all.
+	TryHit = 5,
 }
 
 /// Number of variants in [`QueryKind`]. Sizes the dispatch array.
-pub const QUERY_KIND_COUNT: usize = 4;
+pub const QUERY_KIND_COUNT: usize = 6;
 
 impl QueryKind {
 	#[inline]
@@ -63,6 +68,31 @@ pub enum Query {
 		/// Handlers set this to `false` to make the move fail outright.
 		allowed: bool,
 	},
+	/// The chart multiplier for one hit, offered for adjustment before it lands.
+	///
+	/// This is the seam for abilities that change type matchups rather than raw
+	/// numbers: Levitate sets it to immune, and Tinted Lens or Solid Rock would
+	/// scale it. Doing it here rather than in `ModifyDamage` matters, because an
+	/// immunity has to make the whole move fail — no damage *and* no secondary
+	/// effects — and that decision has to be made before effects are rolled.
+	ModifyEffectiveness {
+		attacker: PositionId,
+		target: PositionId,
+		move_id: MoveId,
+		effectiveness: Effectiveness,
+	},
+	/// Can this move touch this target at all?
+	///
+	/// Distinct from [`Query::TryMove`], which asks whether the *user* can act.
+	/// Protect lives here: the user is perfectly able to move, the target is
+	/// simply not a legal recipient. Semi-invulnerability and Magic Bounce would
+	/// go here too.
+	TryHit {
+		attacker: PositionId,
+		target: PositionId,
+		move_id: MoveId,
+		allowed: bool,
+	},
 }
 
 impl Query {
@@ -73,6 +103,8 @@ impl Query {
 			Query::ModifyStat { .. } => QueryKind::ModifyStat,
 			Query::TryApplyStatus { .. } => QueryKind::TryApplyStatus,
 			Query::TryMove { .. } => QueryKind::TryMove,
+			Query::ModifyEffectiveness { .. } => QueryKind::ModifyEffectiveness,
+			Query::TryHit { .. } => QueryKind::TryHit,
 		}
 	}
 
@@ -85,12 +117,21 @@ impl Query {
 		}
 	}
 
+	/// The chart multiplier, for the query that carries one.
+	pub fn effectiveness(&self) -> Option<Effectiveness> {
+		match self {
+			Query::ModifyEffectiveness { effectiveness, .. } => Some(*effectiveness),
+			_ => None,
+		}
+	}
+
 	/// The boolean verdict, for the two queries that carry one.
 	/// Defaults to `true` (allowed) for queries that are not vetoes.
 	pub fn allowed(&self) -> bool {
 		match self {
 			Query::TryApplyStatus { allowed, .. } => *allowed,
 			Query::TryMove { allowed, .. } => *allowed,
+			Query::TryHit { allowed, .. } => *allowed,
 			_ => true,
 		}
 	}

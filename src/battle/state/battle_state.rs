@@ -47,7 +47,7 @@ impl BattleState {
 				side1_alive = true;
 			}
 		}
-		match (side0_alive, side1_alive) {
+		match (side0_alive, side1_alive) { // we need to change engine step to end the game the moment one side has nobody left...
 			(true, true) => None,
 			(true, false) => Some(Outcome::Win { team: Team::Zero }),
 			(false, true) => Some(Outcome::Win { team: Team::One }),

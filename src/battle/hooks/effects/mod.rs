@@ -7,6 +7,7 @@
 
 pub mod ability;
 pub mod status;
+pub mod volatile;
 pub mod weather;
 
 /// A fraction of a creature's maximum HP, floored at 1.

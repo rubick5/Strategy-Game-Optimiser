@@ -39,10 +39,6 @@ static INERT_WEATHER: &[HookDef] = &[HookDef::reactive(
 )];
 
 /// Chip every creature standing in the sandstorm.
-///
-/// There are no types in the model yet, so nothing is immune. When types land,
-/// the immunity belongs here as an early `continue`, or better, as a query so
-/// abilities like Sand Veil can join in.
 fn sandstorm_damage(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, _rng: &mut dyn RngCore) {
 	for pos in ctx.battle_state.field.all_field_positions() {
 		let mon = match ctx.battle_state.get_mon(pos) {

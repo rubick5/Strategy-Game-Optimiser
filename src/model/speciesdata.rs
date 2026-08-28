@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::ability::AbilityId;
+use crate::model::typing::Typing;
 
 #[derive(Copy, Clone)]
 
@@ -17,6 +18,8 @@ pub struct SpeciesDatum {
 	pub special_attack: u32,
 	pub special_defense: u32,
 	pub speed: u32,
+	/// Elemental typing. Drives the damage chart and STAB.
+	pub typing: Typing,
 	/// The ability every member of this species has. `None` is legal and is a
 	/// useful control case for the learner.
 	pub ability: Option<AbilityId>,
