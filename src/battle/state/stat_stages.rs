@@ -54,6 +54,22 @@ macro_rules! stat_stages {
 					}
 				}
 
+				fn set(&mut self, stat: Stat, stage: i8) {
+					match stat {
+						$(
+							Stat::$stat => self.$field = stage.clamp(-6, 6),
+						)*
+					}
+				}
+
+				pub fn from_pairs(pairs: Vec<(Stat, i8)>) -> Self {
+					let mut s = Self::new();
+					for (stat, stage) in pairs {
+						s.set(stat, stage);
+					}
+					s
+				}
+
 			}
 	};
 }

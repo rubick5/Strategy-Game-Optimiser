@@ -279,6 +279,10 @@ fn execute_event(
 				Some(s) => s.stat_changes.combine_in_place(&stat_changes),
 				None => {}
 			}
+			/* We do the hooks later
+			hooks.dispatch (
+
+			) */
 		},
 		Event::DealDamage { amount, target, source } => {
 			//println!("dealing {} to {:?}", amount, target);
