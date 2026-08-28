@@ -55,6 +55,16 @@ impl StatStages {
 			n => (2.0 + n as f32) / 2.0
 		}
 	}
+
+	pub fn combine(&self, other: &StatStages) -> Self {
+		Self {
+			attack: (self.attack + other.attack).min(6),
+			defense: self.defense + other.defense,
+			speed: self.speed + other.speed,
+			special_attack: self.special_attack + other.special_attack,
+			special_defense: self.special_defense + other.special_defense,
+		}
+	}
 }
 
 impl Default for StatStages {

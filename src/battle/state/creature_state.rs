@@ -23,7 +23,7 @@ pub struct CreatureState {
 impl CreatureState {
 
 	pub fn get_typing(&self, registry: &Registry) -> Typing {
-		todo!()
+		registry.get_species_data(self.species_id).typing
 	}
 	pub fn from_species_data(species_data: &SpeciesDatum, moves: Vec<MoveId>) -> Self {
 		CreatureState {
