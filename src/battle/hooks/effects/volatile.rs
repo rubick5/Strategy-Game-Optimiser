@@ -24,6 +24,7 @@ use crate::battle::hooks::query::{Query, QueryKind};
 use crate::battle::hooks::trigger::{Trigger, TriggerKind};
 use crate::battle::state::field::PositionId;
 use crate::battle::state::volatile::{Volatile, VolatileKind};
+use crate::model::effect::Effect;
 use crate::model::pmove::MoveType;
 use crate::model::speciesdata::Stat;
 
@@ -43,8 +44,11 @@ pub fn hooks(kind: VolatileKind) -> &'static [HookDef] {
 		VolatileKind::LeechSeed => LEECH_SEED,
 		VolatileKind::Protect => PROTECT,
 		VolatileKind::Immobilised => IMMOBILISED,
+		VolatileKind::ProtectStreak => PROTECT_STREAK,
 		// Substitute is handled in the engine's damage path, not here.
 		VolatileKind::Substitute => &[],
+		// Pure storage, read by the bad-poison residual hook.
+		VolatileKind::ToxicCounter => &[],
 	}
 }
 
@@ -153,6 +157,43 @@ fn protect_blocks_incoming(ctx: &HookCtx, query: &mut Query) {
 		if ctx.source.owner() == Some(*target) && attacker != target {
 			*allowed = false;
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Protect streak — the counter that makes repeated Protects fail.
+// ---------------------------------------------------------------------------
+
+static PROTECT_STREAK: &[HookDef] = &[HookDef::reactive(
+	TriggerKind::AfterMove,
+	order::DEFAULT,
+	protect_streak_resets_on_any_other_move,
+)];
+
+/// Using anything other than Protect breaks the chain.
+///
+/// The counter itself is incremented where the roll happens, in
+/// `effect_handler`. This hook only handles the reset, because that depends on
+/// what the creature did *instead*, which is exactly what `AfterMove` reports.
+fn protect_streak_resets_on_any_other_move(ctx: &HookCtx, trigger: &Trigger, events: &mut VecDeque<Event>, _rng: &mut dyn RngCore) {
+	let (user, move_id) = match trigger {
+		Trigger::AfterMove { user, move_id } => (user, move_id),
+		_ => return,
+	};
+	if ctx.source.owner() != Some(*user) {
+		return;
+	}
+	let was_protect = ctx
+		.registry
+		.get_move(*move_id)
+		.effects
+		.iter()
+		.any(|effect| matches!(effect, Effect::Protect));
+	if !was_protect {
+		events.push_back(Event::RemoveVolatile {
+			target: *user,
+			kind: VolatileKind::ProtectStreak,
+		});
 	}
 }
 

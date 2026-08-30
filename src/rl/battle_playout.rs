@@ -59,6 +59,70 @@ pub struct PlayedBattle {
 	pub turns: usize,
 }
 
+/// Play a battle between two fixed policies, recording nothing.
+///
+/// [`play_out_battle_as`] exists to produce training trajectories, so it carries
+/// all the machinery for that. This one is for *measurement*, where both
+/// policies are frozen and the only thing wanted is the outcome — so it takes
+/// two plain `dyn Agent`s rather than requiring a `LearningAgent`, which lets a
+/// random or spam baseline sit in either seat.
+///
+/// Returns the result from `first`'s point of view, plus the turn count.
+pub fn play_headless_as(
+	mut battle: BattleState,
+	registry: &Registry,
+	first: &mut dyn Agent,
+	second: &mut dyn Agent,
+	first_team: Team,
+	rng: &mut dyn RngCore,
+) -> (BattleEnd, usize) {
+	let second_team = first_team.other();
+	let first_pos = battle.field.team_positions(&first_team)[0];
+	let second_pos = battle.field.team_positions(&second_team)[0];
+
+	let mut turn_count = 0;
+	let mut step_request = StepRequest::NeedsActions;
+	while turn_count < MAX_TURNS {
+		turn_count += 1;
+		match step_request {
+			StepRequest::NeedsActions => {
+				let first_mask = Mask::from_battle_state(&first_team, first_pos, &battle);
+				let second_mask = Mask::from_battle_state(&second_team, second_pos, &battle);
+				let (zero_view, one_view) = encoder::encode_both(&battle, registry, false);
+				let (first_view, second_view) = match first_team {
+					Team::Zero => (zero_view, one_view),
+					Team::One => (one_view, zero_view),
+				};
+
+				let actions = vec![
+					first.choose_move(&first_view, &first_mask, rng).to_command(first_pos, &battle, registry),
+					second.choose_move(&second_view, &second_mask, rng).to_command(second_pos, &battle, registry),
+				];
+				StepResult { battle_state: battle, step_request } =
+					engine::step(battle, actions, registry, rng);
+			}
+			StepRequest::NeedsReplacements(positions) => {
+				let mut commands: Vec<Command> = Vec::new();
+				for pos in positions {
+					let team = pos.team();
+					let encoding = encoder::encode(&battle, registry, true, &team);
+					let mask = Mask::from_battle_state(&team, pos, &battle);
+					let actor: &mut dyn Agent = if team == first_team { first } else { second };
+					commands.push(actor.choose_move(&encoding, &mask, rng).to_command(pos, &battle, registry));
+				}
+				StepResult { battle_state: battle, step_request } =
+					engine::step(battle, commands, registry, rng);
+			}
+			StepRequest::Finished(Outcome::Win { team }) => {
+				let won = team == first_team;
+				return (if won { BattleEnd::Win } else { BattleEnd::Loss }, turn_count);
+			}
+			StepRequest::Finished(Outcome::Draw) => return (BattleEnd::Draw, turn_count),
+		}
+	}
+	(BattleEnd::Timeout, turn_count)
+}
+
 /**
  * Makes the agent calculate replacements for all positions handed to the function
  *

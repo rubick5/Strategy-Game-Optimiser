@@ -5,4 +5,6 @@ pub mod nn;
 pub mod mask;
 pub mod battle_playout;
 pub mod evaluate;
+pub mod exploit;
+pub mod replay;
 pub mod moveslot;

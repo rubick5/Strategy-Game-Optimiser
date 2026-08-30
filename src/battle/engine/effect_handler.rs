@@ -10,6 +10,22 @@ const CONFUSION_MAX_TURNS: u8 = 4;
 const TAUNT_TURNS: u8 = 3;
 /// A Substitute costs, and is worth, this fraction of the user's max HP.
 const SUBSTITUTE_FRACTION: u32 = 4;
+/// Each consecutive Protect is this many times less likely to work than the last.
+const PROTECT_DECAY: u32 = 3;
+
+/// Success chance for a Protect, given how many landed in a row before it.
+///
+/// 100%, 33%, 11%, 3%, 1%, then nothing. Without this, Protect blocks every
+/// incoming move forever: a creature spamming it simply cannot be touched, and
+/// with no chip damage on the field the battle runs to the turn cap. That is a
+/// real thing that happened — it is why training stalled at 1000-turn battles.
+fn protect_success_chance(streak: u32) -> u8 {
+	let mut chance = 100u32;
+	for _ in 0..streak.min(8) {
+		chance /= PROTECT_DECAY;
+	}
+	chance as u8
+}
 
 /// Roll an N-percent chance.
 ///
@@ -112,7 +128,28 @@ pub(in crate::battle::engine) fn effect_to_events(
 			]
 		}
 
-		Effect::Protect => volatile(Volatile::new(VolatileKind::Protect)),
+		Effect::Protect => {
+			let streak = battle_state
+				.get_mon(target)
+				.map_or(0, |mon| mon.volatiles.value(VolatileKind::ProtectStreak));
+
+			if !rolls_under(protect_success_chance(streak), rng) {
+				// A failed Protect breaks the chain, so the next one is fresh —
+				// otherwise a creature could keep rolling at 1% forever.
+				return vec![Event::RemoveVolatile {
+					target,
+					kind: VolatileKind::ProtectStreak,
+				}];
+			}
+
+			vec![
+				Event::ApplyVolatile { target, volatile: Volatile::new(VolatileKind::Protect) },
+				Event::ApplyVolatile {
+					target,
+					volatile: Volatile::new(VolatileKind::ProtectStreak).with_value(streak + 1),
+				},
+			]
+		}
 	}
 }
 

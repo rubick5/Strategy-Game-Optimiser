@@ -1,7 +1,7 @@
 use eframe::egui;
 use rand::RngCore;
 
-use crate::{battle::{command::Command, engine::engine::{self, StepRequest}, state::{Outcome, Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId, weather::TimedWeather}}, model::{pmove::{MoveType, PMove}, registry::Registry, speciesdata::Stat, typing::{self, Typing}}, rl::{agent::Agent, encoder, mask::Mask, moveslot::{MOVESLOT_COUNT, Moveslot}}};
+use crate::{battle::{command::Command, engine::engine::{self, StepRequest}, state::{Outcome, Team, battle_state::BattleState, creature_state::CreatureState, field::PositionId, non_volatile_status::NonVolatileStatus, weather::TimedWeather}}, model::{pmove::{MoveType, PMove}, registry::Registry, speciesdata::Stat, typing::{self, Typing}}, rl::{agent::Agent, encoder, mask::Mask, moveslot::{MOVESLOT_COUNT, Moveslot}}};
 
 /// Width of the text HP bar, in characters.
 const HP_BAR_WIDTH: usize = 20;
@@ -307,18 +307,41 @@ where
 	/// Both kinds of status on one line, since in play you care about the
 	/// combination rather than which bucket each one lives in.
 	fn describe_conditions(&self, creature: &CreatureState) -> String {
+		use crate::battle::state::volatile::VolatileKind;
 		let mut parts: Vec<String> = Vec::new();
+
 		if creature.non_vol_status.is_afflicted() {
-			parts.push(format!("{}", creature.non_vol_status));
+			// Bad poison reads as its current severity rather than a bare name,
+			// since how far the ramp has gone is the thing you act on.
+			let toxic = creature.volatiles.value(VolatileKind::ToxicCounter).max(1);
+			if creature.non_vol_status == NonVolatileStatus::BadPoison {
+				parts.push(format!("{} ({}/16 next turn)", creature.non_vol_status, toxic));
+			} else {
+				parts.push(format!("{}", creature.non_vol_status));
+			}
 		}
+
 		for volatile in creature.volatiles.iter() {
+			// Counters are folded into the thing they count, not listed raw.
+			if volatile.kind == VolatileKind::ToxicCounter {
+				continue;
+			}
+			if volatile.kind == VolatileKind::ProtectStreak {
+				parts.push(format!(
+					"Protect used {}x in a row (next ~{}% likely)",
+					volatile.value,
+					protect_odds(volatile.value)
+				));
+				continue;
+			}
+
 			let mut label = volatile.kind.name().to_string();
 			if let Some(turns) = volatile.turns_left {
 				label.push_str(&format!(" ({}t)", turns));
 			}
 			// Substitute stores its remaining HP, which is the thing you actually
 			// want to know about it.
-			if volatile.kind == crate::battle::state::volatile::VolatileKind::Substitute {
+			if volatile.kind == VolatileKind::Substitute {
 				label.push_str(&format!(" [{} hp]", volatile.value));
 			}
 			parts.push(label);
@@ -453,6 +476,15 @@ where
 		}
 		line
 	}
+}
+
+/// Mirrors `effect_handler::protect_success_chance` for display purposes.
+fn protect_odds(streak: u32) -> u32 {
+	let mut chance = 100u32;
+	for _ in 0..streak.min(8) {
+		chance /= 3;
+	}
+	chance
 }
 
 /// "Rock/Ground" or just "Fire".
