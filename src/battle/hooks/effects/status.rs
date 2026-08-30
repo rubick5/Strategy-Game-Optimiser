@@ -16,14 +16,13 @@ use crate::battle::hooks::order;
 use crate::battle::hooks::query::{Query, QueryKind};
 use crate::battle::hooks::trigger::{Trigger, TriggerKind};
 use crate::battle::state::non_volatile_status::NonVolatileStatus;
-use crate::battle::state::volatile::{Volatile, VolatileKind};
+use crate::battle::state::volatile::{MAX_TOXIC_COUNTER, Volatile, VolatileKind};
 use crate::model::speciesdata::Stat;
 
 /// Poison costs 1/8 max HP a turn.
 const POISON_FRACTION: u32 = 8;
-/// Bad poison, for now, matches the old engine's 1/16. Real Bad Poison ramps
-/// 1/16, 2/16, 3/16 ...; that needs a per-creature counter to be added first.
-const BAD_POISON_FRACTION: u32 = 16;
+/// Bad poison ticks n/16, where n counts the turns it has been active.
+const BAD_POISON_DENOMINATOR: u32 = 16;
 /// Burn costs 1/16 max HP a turn.
 const BURN_FRACTION: u32 = 16;
 /// Chance per turn that paralysis costs the creature its move entirely.
@@ -83,8 +82,33 @@ fn poison_residual(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Even
 	chip_owner(ctx, events, POISON_FRACTION);
 }
 
+/// Bad poison ramps: 1/16, then 2/16, then 3/16, and so on.
+///
+/// The count lives in the `ToxicCounter` volatile rather than on the status
+/// itself, which gets the reset rule for free — volatiles are wiped when a
+/// creature leaves the field, and that is exactly when a toxic counter should
+/// go back to one. Switching out to reset the ramp is a real play, and it
+/// works here without any special-casing.
 fn bad_poison_residual(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, _rng: &mut dyn RngCore) {
-	chip_owner(ctx, events, BAD_POISON_FRACTION);
+	let pos = match ctx.source.owner() {
+		Some(pos) => pos,
+		None => return,
+	};
+	let mon = match ctx.battle_state.get_mon(pos) {
+		Some(mon) => mon,
+		None => return,
+	};
+
+	// Absent counter means this is the first tick, so treat it as n = 1.
+	let turns = mon.volatiles.value(VolatileKind::ToxicCounter).max(1);
+	let amount = (mon.max_hp * turns / BAD_POISON_DENOMINATOR).max(1);
+	events.push_back(Event::DealDamage { amount, target: pos, source: None });
+
+	events.push_back(Event::ApplyVolatile {
+		target: pos,
+		volatile: Volatile::new(VolatileKind::ToxicCounter)
+			.with_value((turns + 1).min(MAX_TOXIC_COUNTER)),
+	});
 }
 
 fn burn_residual(ctx: &HookCtx, _trigger: &Trigger, events: &mut VecDeque<Event>, _rng: &mut dyn RngCore) {

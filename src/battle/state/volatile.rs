@@ -30,9 +30,23 @@ pub enum VolatileKind {
 	/// for it — confusion and full paralysis — so that the actual veto stays a
 	/// pure, deterministic query.
 	Immobilised = 6,
+
+	// --- bookkeeping counters ---------------------------------------------
+	//
+	// These two carry no behaviour of their own; they exist so that a ramping
+	// effect has somewhere to keep its count. Storing them as volatiles is not
+	// just convenient, it is *correct*: both reset when the creature leaves the
+	// field, which is exactly what volatiles already do.
+	/// Turns of bad poison so far. Ramps the tick to n/16.
+	ToxicCounter = 7,
+	/// Consecutive uses of Protect. Each one makes the next less likely to work.
+	ProtectStreak = 8,
 }
 
-pub const VOLATILE_COUNT: usize = 7;
+pub const VOLATILE_COUNT: usize = 9;
+
+/// Bad poison stops ramping here, as in the games.
+pub const MAX_TOXIC_COUNTER: u32 = 15;
 
 impl VolatileKind {
 	pub const ALL: [VolatileKind; VOLATILE_COUNT] = [
@@ -43,6 +57,8 @@ impl VolatileKind {
 		VolatileKind::LeechSeed,
 		VolatileKind::Protect,
 		VolatileKind::Immobilised,
+		VolatileKind::ToxicCounter,
+		VolatileKind::ProtectStreak,
 	];
 
 	#[inline]
@@ -68,7 +84,17 @@ impl VolatileKind {
 			VolatileKind::LeechSeed => "Leech Seed",
 			VolatileKind::Protect => "Protected",
 			VolatileKind::Immobilised => "Can't move",
+			VolatileKind::ToxicCounter => "Toxic build-up",
+			VolatileKind::ProtectStreak => "Protect streak",
 		}
+	}
+
+	/// Pure bookkeeping rather than a condition in its own right.
+	///
+	/// Worth distinguishing for display: a player wants to see "Bad Poison (x3)",
+	/// not a separate line reading "Toxic build-up".
+	pub fn is_counter(self) -> bool {
+		matches!(self, VolatileKind::ToxicCounter | VolatileKind::ProtectStreak)
 	}
 }
 
@@ -224,6 +250,13 @@ mod tests {
 		assert_eq!(v.value(VolatileKind::Substitute), 37);
 		v.set_value(VolatileKind::Substitute, 12);
 		assert_eq!(v.value(VolatileKind::Substitute), 12);
+	}
+
+	#[test]
+	fn counters_are_not_turn_scoped() {
+		// A counter swept every turn would never ramp.
+		assert!(!VolatileKind::ToxicCounter.is_turn_scoped());
+		assert!(!VolatileKind::ProtectStreak.is_turn_scoped());
 	}
 
 	#[test]

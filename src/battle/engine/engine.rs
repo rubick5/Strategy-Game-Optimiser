@@ -367,6 +367,9 @@ fn execute_event(
 
 			if let Some(mon) = battle_state.get_mut_mon(target) {
 				mon.non_vol_status = status;
+				// Any change of status restarts the bad-poison ramp — a fresh
+				// poisoning begins at 1/16, and a cure leaves nothing to count.
+				mon.volatiles.remove(VolatileKind::ToxicCounter);
 			}
 
 			// The new status brings its own hooks.
@@ -1575,6 +1578,163 @@ mod tests {
 		assert!(
 			!state.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::Taunt),
 			"two turns of Taunt should have run out after two turns"
+		);
+	}
+
+	/*******************************
+	 *
+	 * RAMPING COUNTERS:
+	 *
+	 * Protect getting less reliable, and bad poison getting worse. Both keep
+	 * their count in a volatile, so both reset on switch-out for free.
+	 */
+
+	/// Protect spam must stop working. This is the regression test for the bug
+	/// that stalled training: with no failure chance, a creature spamming Protect
+	/// could not be touched, and battles ran to the 1000-turn cap.
+	#[test]
+	fn repeated_protect_starts_failing() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		// stonewarden spams guard; thornbeast attacks every turn.
+		let mut state = duel(&registry, 3, vec![MoveId(25)], 5, vec![MoveId(14)]);
+		let full_hp = state.get_mon(PositionId(0)).unwrap().current_hp;
+
+		let mut got_through = false;
+		for _ in 0..12 {
+			let guard = use_move(PositionId(0), PositionId(0), 25);
+			let attack = use_move(PositionId(1), PositionId(0), 14);
+			state = step(state, vec![guard, attack], &registry, &mut rng).battle_state;
+			if state.get_mon(PositionId(0)).unwrap().current_hp < full_hp {
+				got_through = true;
+				break;
+			}
+		}
+		assert!(
+			got_through,
+			"twelve consecutive Protects should not all have worked - odds are 100/33/11/3/1/0%"
+		);
+	}
+
+	/// The chain breaks when the creature does something else, so Protect stays
+	/// usable as an occasional tool rather than being permanently spent.
+	#[test]
+	fn using_another_move_resets_the_protect_streak() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut state = duel(&registry, 3, vec![MoveId(25), MoveId(5)], 5, vec![MoveId(14)]);
+
+		// One Protect: streak goes to 1.
+		state = step(state, vec![use_move(PositionId(0), PositionId(0), 25)], &registry, &mut rng).battle_state;
+		assert_eq!(
+			state.get_mon(PositionId(0)).unwrap().volatiles.value(VolatileKind::ProtectStreak),
+			1
+		);
+
+		// Then attack instead, and the chain is gone.
+		state = step(state, vec![use_move(PositionId(0), PositionId(1), 5)], &registry, &mut rng).battle_state;
+		assert!(
+			!state.get_mon(PositionId(0)).unwrap().volatiles.has(VolatileKind::ProtectStreak),
+			"any other move should break the chain"
+		);
+	}
+
+	/// Bad poison hurts more every turn it stays in.
+	#[test]
+	fn bad_poison_ramps_each_turn() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut state = duel(&registry, 7, vec![MoveId(16)], 5, vec![MoveId(14)]);
+		state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::BadPoison;
+		let max_hp = state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		let mut ticks: Vec<u32> = Vec::new();
+		for _ in 0..4 {
+			let before = state.get_mon(PositionId(0)).unwrap().current_hp;
+			state = step(state, vec![], &registry, &mut rng).battle_state;
+			ticks.push(before - state.get_mon(PositionId(0)).unwrap().current_hp);
+		}
+
+		assert_eq!(ticks[0], max_hp / 16, "the first tick is a plain 1/16");
+		for i in 1..ticks.len() {
+			assert!(
+				ticks[i] > ticks[i - 1],
+				"each tick should hurt more than the last, got {:?}",
+				ticks
+			);
+		}
+	}
+
+	/// Switching out resets the ramp — which is the whole reason the counter
+	/// lives in a volatile rather than on the status.
+	#[test]
+	fn switching_out_resets_the_toxic_ramp() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let moves = vec![MoveId(16)];
+		let team0 = vec![
+			live_registry_mon(&registry, 7, moves.clone()),
+			live_registry_mon(&registry, 3, moves.clone()),
+		];
+		let team1 = vec![live_registry_mon(&registry, 5, moves.clone())];
+		let mut state = BattleState::from(team0, team1, vec![0, 1]);
+		state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::BadPoison;
+
+		// Let the ramp build for a few turns.
+		for _ in 0..3 {
+			state = step(state, vec![], &registry, &mut rng).battle_state;
+		}
+		assert!(state.get_mon(PositionId(0)).unwrap().volatiles.value(VolatileKind::ToxicCounter) > 1);
+
+		let max_hp = state.roster.get_mon(RosterId(0)).unwrap().max_hp;
+		let ramped_tick = {
+			let before = state.roster.get_mon(RosterId(0)).unwrap().current_hp;
+			let after = step(state.clone(), vec![], &registry, &mut rng).battle_state;
+			before - after.roster.get_mon(RosterId(0)).unwrap().current_hp
+		};
+		assert!(ramped_tick > max_hp / 16, "the ramp should be past its first step by now");
+
+		// Switch out, then back in.
+		state = step(state, vec![Command::Switch { current: PositionId(0), new: RosterId(2) }], &registry, &mut rng).battle_state;
+		let hp_before_return = state.roster.get_mon(RosterId(0)).unwrap().current_hp;
+		state = step(state, vec![Command::Switch { current: PositionId(0), new: RosterId(0) }], &registry, &mut rng).battle_state;
+
+		let returning = state.roster.get_mon(RosterId(0)).unwrap();
+		assert_eq!(returning.non_vol_status, NonVolatileStatus::BadPoison, "the poison itself persists");
+		// The turn it comes back it takes a tick, and that tick is a fresh 1/16
+		// rather than a continuation of the old ramp.
+		assert_eq!(
+			hp_before_return - returning.current_hp,
+			max_hp / 16,
+			"coming back in should restart the ramp, not resume it (ramped tick was {})",
+			ramped_tick
+		);
+	}
+
+	/// Curing and re-applying restarts the count rather than resuming it.
+	#[test]
+	fn a_status_change_restarts_the_toxic_ramp() {
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		let mut state = duel(&registry, 7, vec![MoveId(16)], 5, vec![MoveId(14)]);
+		state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::BadPoison;
+
+		for _ in 0..3 {
+			state = step(state, vec![], &registry, &mut rng).battle_state;
+		}
+		assert!(state.get_mon(PositionId(0)).unwrap().volatiles.value(VolatileKind::ToxicCounter) > 1);
+
+		// Cure, then re-poison.
+		state.get_mut_mon(PositionId(0)).unwrap().volatiles.remove(VolatileKind::ToxicCounter);
+		state.get_mut_mon(PositionId(0)).unwrap().non_vol_status = NonVolatileStatus::BadPoison;
+		let max_hp = state.get_mon(PositionId(0)).unwrap().max_hp;
+
+		let before = state.get_mon(PositionId(0)).unwrap().current_hp;
+		let state = step(state, vec![], &registry, &mut rng).battle_state;
+		assert_eq!(
+			before - state.get_mon(PositionId(0)).unwrap().current_hp,
+			max_hp / 16,
+			"a fresh poisoning starts at 1/16 again"
 		);
 	}
 

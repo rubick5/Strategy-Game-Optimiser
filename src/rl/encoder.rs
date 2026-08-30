@@ -27,11 +27,13 @@
 //! confident nonsense. Retrain.
 
 use crate::{
+	battle::hooks::HookTable,
 	battle::state::{
 		TEAM_SIZE, Team, battle_state::BattleState, creature_state::CreatureState,
 		non_volatile_status::{NonVolatileStatus, STATUS_COUNT},
+		field::PositionId,
 		roster::RosterId,
-		volatile::{VOLATILE_COUNT, VolatileKind},
+		volatile::{MAX_TOXIC_COUNTER, VOLATILE_COUNT, VolatileKind},
 		weather::Weather,
 	},
 	model::{
@@ -59,7 +61,8 @@ const ACTIVE_COUNT: usize = 2;
 const WEATHER_COUNT: usize = 4;
 
 /// Per creature: 5 stats, HP fraction, 5 stat stages, status one-hot,
-/// ability one-hot, type multi-hot, volatile multi-hot, substitute HP fraction.
+/// ability one-hot, type multi-hot, volatile multi-hot, and three counters
+/// (substitute HP, toxic build-up, Protect streak).
 ///
 /// The types and volatiles are multi-hots rather than one-hots because a
 /// creature can have several at once and their order carries no meaning.
@@ -67,7 +70,7 @@ const WEATHER_COUNT: usize = 4;
 /// Volatiles have to be here or they are hidden dynamics: an agent that gets
 /// Taunted would otherwise see its status move silently fail with no idea why.
 pub const MON_ENCODING_LEN: usize =
-	STAT_COUNT + 1 + STAT_COUNT + STATUS_COUNT + ABILITY_COUNT + TYPE_COUNT + VOLATILE_COUNT + 1;
+	STAT_COUNT + 1 + STAT_COUNT + STATUS_COUNT + ABILITY_COUNT + TYPE_COUNT + VOLATILE_COUNT + 3;
 
 /// Per move slot: power, is-special, is-status, priority, rider chance, and the
 /// chart multiplier against the creature currently opposite.
@@ -120,9 +123,20 @@ fn perspective_order(battle_state: &BattleState, team: &Team) -> Vec<usize> {
 /// Encode the battle as `team` sees it.
 pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool, team: &Team) -> Vec<f32> {
 	let order = perspective_order(battle_state, team);
-	assemble(battle_state, registry, replacement, &order, &|rid| {
-		encode_mon(battle_state.roster.get_mon(RosterId(rid)), registry)
-	})
+	let mut hooks = HookTable::new();
+	hooks.refresh(battle_state, registry);
+	assemble(
+		battle_state, registry, replacement, &order, &hooks, active_positions(battle_state, team),
+		&|rid| encode_mon(battle_state.roster.get_mon(RosterId(rid)), registry),
+	)
+}
+
+/// The viewer's active position and their opponent's.
+fn active_positions(battle_state: &BattleState, team: &Team) -> (Option<PositionId>, Option<PositionId>) {
+	(
+		battle_state.field.team_positions(team).first().copied(),
+		battle_state.field.team_positions(&team.other()).first().copied(),
+	)
 }
 
 /// Both perspectives at once, sharing the per-creature work.
@@ -141,19 +155,19 @@ pub fn encode_both(
 
 	let lookup = |rid: usize| blocks[rid].clone();
 
+	// One table serves both perspectives - it describes the board, not a viewer.
+	let mut hooks = HookTable::new();
+	hooks.refresh(battle_state, registry);
+
 	let zero = assemble(
-		battle_state,
-		registry,
-		replacement,
+		battle_state, registry, replacement,
 		&perspective_order(battle_state, &Team::Zero),
-		&lookup,
+		&hooks, active_positions(battle_state, &Team::Zero), &lookup,
 	);
 	let one = assemble(
-		battle_state,
-		registry,
-		replacement,
+		battle_state, registry, replacement,
 		&perspective_order(battle_state, &Team::One),
-		&lookup,
+		&hooks, active_positions(battle_state, &Team::One), &lookup,
 	);
 	(zero, one)
 }
@@ -164,6 +178,8 @@ fn assemble(
 	registry: &Registry,
 	replacement: bool,
 	order: &[usize],
+	hooks: &HookTable,
+	actives: (Option<PositionId>, Option<PositionId>),
 	mon_block: &dyn Fn(usize) -> Vec<f32>,
 ) -> Vec<f32> {
 	let mut y: Vec<f32> = Vec::with_capacity(TOTAL_ENCODING_LEN);
@@ -174,15 +190,14 @@ fn assemble(
 
 	// The first ACTIVE_COUNT entries are the creatures on the field, mine first.
 	// Each one's moves are scored against the creature opposite it.
+	let (mine, theirs) = actives;
 	for slot in 0..ACTIVE_COUNT {
 		let creature = order
 			.get(slot)
 			.and_then(|rid| battle_state.roster.get_mon(RosterId(*rid)));
-		let opposing = order
-			.get(ACTIVE_COUNT - 1 - slot)
-			.and_then(|rid| battle_state.roster.get_mon(RosterId(*rid)))
-			.map(|c| registry.get_species_data(c.species_id).typing);
-		y.extend(encode_moveset(creature, registry, opposing));
+		// Slot 0 is my active attacking theirs; slot 1 is the reverse.
+		let (attacker, defender) = if slot == 0 { (mine, theirs) } else { (theirs, mine) };
+		y.extend(encode_moveset(creature, registry, battle_state, hooks, attacker, defender));
 	}
 
 	y.extend(encode_field(battle_state, replacement));
@@ -246,10 +261,17 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 		v.push(creature.volatiles.has(kind) as u32 as f32);
 	}
 
-	// How much of a Substitute is left, as a fraction of the HP it cost. The
-	// multi-hot above only says one is up; this says whether it is about to break.
+	// The multi-hot above only says a condition is present. These three say how
+	// far along it is, which for a ramping effect is the whole decision.
+	//
+	// Without the toxic counter the agent cannot tell 1/16 poison from 8/16, so
+	// it cannot learn when a switch is worth the tempo. Without the Protect
+	// streak it cannot tell a Protect that will work from one that almost
+	// certainly will not.
 	let substitute_hp = creature.volatiles.value(VolatileKind::Substitute) as f32;
 	v.push(if creature.max_hp == 0 { 0.0 } else { substitute_hp / creature.max_hp as f32 });
+	v.push(creature.volatiles.value(VolatileKind::ToxicCounter) as f32 / MAX_TOXIC_COUNTER as f32);
+	v.push((creature.volatiles.value(VolatileKind::ProtectStreak) as f32 / 4.0).min(1.0));
 
 	debug_assert_eq!(v.len(), MON_ENCODING_LEN);
 	v
@@ -259,7 +281,10 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 fn encode_moveset(
 	op_mon: Option<&CreatureState>,
 	registry: &Registry,
-	opposing: Option<Typing>,
+	battle_state: &BattleState,
+	hooks: &HookTable,
+	attacker: Option<PositionId>,
+	defender: Option<PositionId>,
 ) -> Vec<f32> {
 	let attacker_typing = op_mon.map(|c| registry.get_species_data(c.species_id).typing);
 	let mut v: Vec<f32> = Vec::with_capacity(MOVESLOT_COUNT * MOVE_ENCODING_LEN);
@@ -267,33 +292,65 @@ fn encode_moveset(
 		let mv = op_mon
 			.and_then(|creature| creature.moves.get(slot))
 			.map(|move_id| registry.get_move(*move_id));
-		v.extend(encode_move(mv, attacker_typing, opposing));
+		v.extend(encode_move(mv, attacker_typing, battle_state, registry, hooks, attacker, defender));
 	}
 	v
 }
 
-/// The multiplier a move would land for, chart and STAB included.
+/// What a move would ACTUALLY land for: chart, abilities and STAB.
 ///
-/// This is the raw chart only — an ability that changes a match-up (Levitate)
-/// is not folded in, because the encoder has no hook table. The ability is in
-/// the encoding separately, so the interaction stays learnable.
-fn move_multiplier(mv: &PMove, attacker: Option<Typing>, defender: Option<Typing>) -> f32 {
+/// This used to report the raw chart and leave abilities to be inferred from
+/// the ability one-hot. That was a mistake, and a measurable one. Against a
+/// Levitate holder a Ground move reads 2x on the chart and does exactly nothing
+/// in practice, so the agent was being handed a number that was not merely
+/// incomplete but *inverted* — the feature pointed hardest at the one move that
+/// could not work.
+///
+/// Measured with a greedy policy on `start_battle.json`: reading the raw chart
+/// won 5% of games as Team Zero; asking the hook table instead won 100%. Same
+/// policy, same rosters, only this call changed.
+///
+/// It also made the defect asymmetric, because only Team One fields a Levitate
+/// creature — so only Team Zero was ever lied to.
+fn move_multiplier(
+	mv: &PMove,
+	attacker_typing: Option<Typing>,
+	battle_state: &BattleState,
+	registry: &Registry,
+	hooks: &HookTable,
+	attacker: Option<PositionId>,
+	defender: Option<PositionId>,
+) -> f32 {
 	if !mv.move_type.is_damaging() {
 		return 0.0;
 	}
-	let defender = match defender {
-		Some(d) => d,
+	let (attacker_pos, defender_pos) = match (attacker, defender) {
+		(Some(a), Some(d)) => (a, d),
+		_ => return 0.0,
+	};
+	let defender_typing = match battle_state.get_mon(defender_pos) {
+		Some(c) => registry.get_species_data(c.species_id).typing,
 		None => return 0.0,
 	};
-	let mut eff = typing::effectiveness(mv.element, &defender);
-	if attacker.map_or(false, |a| a.contains(mv.element)) {
+
+	let base = typing::effectiveness(mv.element, &defender_typing);
+	let mut eff = hooks.final_effectiveness(battle_state, registry, attacker_pos, defender_pos, mv.move_id, base);
+	if attacker_typing.map_or(false, |a| a.contains(mv.element)) {
 		eff = eff.with_stab();
 	}
 	// 0, 0.25, 0.5, 1, 2, 4 (x1.5 with STAB) -> scaled into roughly 0..1.
 	eff.as_f32() / 4.0
 }
 
-fn encode_move(op_move: Option<&PMove>, attacker: Option<Typing>, defender: Option<Typing>) -> Vec<f32> {
+fn encode_move(
+	op_move: Option<&PMove>,
+	attacker_typing: Option<Typing>,
+	battle_state: &BattleState,
+	registry: &Registry,
+	hooks: &HookTable,
+	attacker: Option<PositionId>,
+	defender: Option<PositionId>,
+) -> Vec<f32> {
 	let mv = match op_move {
 		Some(mv) => mv,
 		// Empty slot. Also what the mask disallows, so the agent gets a
@@ -314,7 +371,7 @@ fn encode_move(op_move: Option<&PMove>, attacker: Option<Typing>, defender: Opti
 		(mv.move_type == MoveType::Status) as u32 as f32,
 		mv.base_prio as f32 / PRIORITY_SCALAR,
 		best_chance as f32 / 100.0,
-		move_multiplier(mv, attacker, defender),
+		move_multiplier(mv, attacker_typing, battle_state, registry, hooks, attacker, defender),
 	]
 }
 
@@ -529,13 +586,57 @@ mod tests {
 			SpeciesId(4),
 			Registry::default_moveset(SpeciesId(4)),
 		);
-		let opposing = Some(registry.get_species_data(SpeciesId(3)).typing);
-		let encoded = encode_moveset(Some(&creature), &registry, opposing);
+		let battle_state = asymmetric_battle(&registry);
+		let mut hooks = HookTable::new();
+		hooks.refresh(&battle_state, &registry);
+		let encoded = encode_moveset(
+			Some(&creature), &registry, &battle_state, &hooks,
+			Some(PositionId(0)), Some(PositionId(1)),
+		);
 		assert_eq!(encoded.len(), MOVESLOT_COUNT * MOVE_ENCODING_LEN);
 		// mireling's slots are aqua pulse / frost bolt / static jolt / toxic mist —
 		// a status move in slot 3 means that slot's is-status flag is set.
 		assert_eq!(encoded[3 * MOVE_ENCODING_LEN + 2], 1.0);
 		assert_eq!(encoded[0 * MOVE_ENCODING_LEN + 2], 0.0);
+	}
+
+	/// The move-effectiveness feature must report what a move would ACTUALLY do,
+	/// abilities included.
+	///
+	/// This is the regression test for a measured defect: reporting the raw chart
+	/// told the agent a Ground move was 2x into a Levitate holder when it does
+	/// nothing at all, and a greedy policy reading that number won 5% of games
+	/// instead of 100%.
+	#[test]
+	fn move_effectiveness_accounts_for_abilities() {
+		let registry = Registry::load();
+		// gustling (Electric, Levitate) is immune to Ground despite the chart
+		// saying Ground hits Electric for 2x.
+		let attacker = mon(&registry, 3); // stonewarden, has earth spike (Ground)
+		let levitator = mon(&registry, 6);
+		let grounded = mon(&registry, 7); // brackenox, Steel/Ground, no ability
+
+		let against = |defender: CreatureState| {
+			let battle_state = BattleState::from(vec![attacker.clone()], vec![defender], vec![0, 1]);
+			let mut hooks = HookTable::new();
+			hooks.refresh(&battle_state, &registry);
+			let encoded = encode_moveset(
+				battle_state.get_mon(PositionId(0)), &registry, &battle_state, &hooks,
+				Some(PositionId(0)), Some(PositionId(1)),
+			);
+			// stonewarden's slot 1 is earth spike; the multiplier is the last
+			// value in each move's block.
+			encoded[1 * MOVE_ENCODING_LEN + (MOVE_ENCODING_LEN - 1)]
+		};
+
+		assert_eq!(
+			against(levitator), 0.0,
+			"a Ground move into Levitate must read as doing nothing"
+		);
+		assert!(
+			against(grounded) > 0.0,
+			"and the same move into something without the ability must still read as landing"
+		);
 	}
 
 	/// An empty roster slot must not blow up or produce a ragged row.
