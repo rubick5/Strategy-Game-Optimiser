@@ -1,4 +1,6 @@
-use std::error::Error;
+/// NOTEEEEE: make it so that we dont store super-old agents to train against as they mostly suck anyway...
+
+use std::{collections::VecDeque, error::Error};
 
 use rand::{Rng, RngCore, seq::{IndexedMutRandom, IndexedRandom as _}};
 
@@ -8,6 +10,7 @@ use crate::battle::state::Team;
 pub const EXPLORATION_CHANCE: f32 = 0.00;
 pub const LEARNING_RATE: f32 = 0.05;
 pub const ENTROPY_REWARD_RATE: f32 = 0.05;
+const PAST_SELF_OPPONENTS_MAX: usize = 4;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
@@ -32,6 +35,8 @@ const EVAL_BATTLES_EACH: usize = 50;
 struct TrainingWindow {
 	battles: usize,
 	wins: usize,
+	past_self_wins: usize,
+	past_self_battles: usize,
 	losses: usize,
 	draws: usize,
 	timeouts: usize,
@@ -39,11 +44,19 @@ struct TrainingWindow {
 }
 
 impl TrainingWindow {
-	fn record(&mut self, played: &PlayedBattle) {
+	fn record(&mut self, played: &PlayedBattle, is_past_self: bool) {
 		self.battles += 1;
 		self.total_turns += played.turns;
+		if is_past_self {
+			self.past_self_battles += 1;
+		}
 		match played.outcome {
-			BattleEnd::Win => self.wins += 1,
+			BattleEnd::Win => {
+				self.wins += 1;
+				if is_past_self {
+					self.past_self_wins += 1;
+				}
+			},
 			BattleEnd::Loss => self.losses += 1,
 			BattleEnd::Draw => self.draws += 1,
 			BattleEnd::Timeout => self.timeouts += 1,
@@ -52,8 +65,9 @@ impl TrainingWindow {
 
 	fn print(&self, batch_num: usize) {
 		let battles = self.battles.max(1) as f32;
+		let self_battles = self.past_self_battles.max(1) as f32;
 		println!(
-			"batch {}: battles won: {} out of {} ({:.1}%) | draws {} | timeouts {} ({:.1}%) | mean {:.1} turns",
+			"batch {}: battles won: {} out of {} ({:.1}%) | draws {} | timeouts {} ({:.1}%) | mean {:.1} turns | {} past self wins ({:.1}%) | {} past self battles",
 			batch_num,
 			self.wins,
 			// The denominator is what was actually played. The old code printed a
@@ -65,15 +79,25 @@ impl TrainingWindow {
 			self.timeouts,
 			self.timeouts as f32 / battles * 100.0,
 			self.total_turns as f32 / battles,
+			self.past_self_wins,
+			self.past_self_wins as f32 / self_battles * 100.0,
+			self.past_self_battles,
 		);
 	}
 }
 
-fn get_next_opponent<'a>(static_ops: &'a mut Vec<Box<dyn Agent>>, past_ops: &'a mut Vec<Box<dyn Agent>>, rng: &mut dyn RngCore) -> Option<&'a mut Box<dyn Agent>> {
+/**
+ * Gets the next opponent for training purposes.
+ * Returns true if the opponent was a past self, and false if it's one of the fixed agents.
+ */
+fn get_next_opponent<'a>(static_ops: &'a mut Vec<Box<dyn Agent>>, past_ops: &'a mut VecDeque<Box<dyn Agent>>, rng: &mut dyn RngCore)
+	-> (Option<&'a mut Box<dyn Agent>>, bool)
+{
 	if past_ops.is_empty() || rng.random_bool(0.7) {
-		static_ops.choose_mut(rng)
+		(static_ops.choose_mut(rng), false)
 	} else {
-		past_ops.choose_mut(rng)
+		let index = rng.random_range(0..past_ops.len());
+		(past_ops.get_mut(index), true) // can't choose_mut on vecdeque
 	}
 
 }
@@ -105,7 +129,7 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 		Box::new(SpamAgent{index: 2}),
 		];
 
-	let mut past_self_opponents: Vec<Box<dyn Agent>> = Vec::new();
+	let mut past_self_opponents: VecDeque<Box<dyn Agent>> = VecDeque::new();
 
 	let battle_states: Vec<BattleState> = battle_state_paths.iter()
 		.map(|s| BattleState::from_file(s)).collect::<Result<Vec<_>, _>>()?;
@@ -117,7 +141,9 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 	for batch_num in 0..BATCH_COUNT {
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();
 		for _ in 0..BATCH_SIZE {
-			let opponent = get_next_opponent(&mut static_opponents, &mut past_self_opponents, rng).ok_or("no opponents available...")?;
+			let gno = get_next_opponent(&mut static_opponents, &mut past_self_opponents, rng);
+			let opponent = gno.0.ok_or("weird weird stuff")?;
+			let is_past_self = gno.1;
 			let battle: BattleState = battle_states.choose(rng).ok_or("no battle states available....")?.clone();
 
 			// Coin-flip which side the learner takes. With deterministic damage a
@@ -127,7 +153,7 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 			let side = if rng.random_bool(0.5) { Team::Zero } else { Team::One };
 			let played_battle = play_out_battle_as(battle, &registry, &mut agent, opponent, rng, side);
 
-			window.record(&played_battle);
+			window.record(&played_battle, is_past_self);
 			current_batch.push(played_battle);
 		}
 
@@ -153,7 +179,10 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 		agent.learn_from_batch(&current_batch, 1.0, &train_config);
 
 		if batch_num % BATCH_HISTORY_FREQ == 0 {
-			past_self_opponents.push(Box::new(agent.clone()));
+			if past_self_opponents.len() >= PAST_SELF_OPPONENTS_MAX {
+				past_self_opponents.pop_front();
+			}
+			past_self_opponents.push_back(Box::new(agent.clone()));
 		}
 	}
 
