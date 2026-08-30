@@ -4,6 +4,8 @@ use rand::prelude::SeedableRng;
 use rand::rngs::StdRng;
 use std::error::Error;
 
+// THE REASON IT IS NOW SLOW IS BECAUSE THAT FATTY SPAMS PROTECT...
+
 fn main() -> Result<(), Box<dyn Error>> {
 	// The new roster. `normal_battle.json` still loads, but both its species are
 	// the original test dummies — one of which has 1000 Defense — so it is a poor
@@ -20,7 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		"example_battles/coverage_test.json", */
 	];
 
-	let mut rng = StdRng::seed_from_u64(871);
+	let mut rng = StdRng::seed_from_u64(6767);
 	//let agent = BotAgent::init_random(encoder::TOTAL_ENCODING_LEN, &mut rng);
 	let agent = PPOAgent::init_random(&mut rng);
 	train::main_loop(agent, &mut rng, &battle_states)
