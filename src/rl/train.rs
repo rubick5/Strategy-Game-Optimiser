@@ -26,6 +26,9 @@ const BATCH_HISTORY_FREQ: usize = 50;
 const EVAL_FREQ: usize = 200;
 const EVAL_BATTLES_EACH: usize = 50;
 
+const PAST_SELF_PLAY_CHANCE: f64 = 0.5;
+
+
 /// Rolling counters for the battles played since the last printout.
 ///
 /// Timeouts used to be invisible: a battle that hit the turn cap produced no
@@ -93,7 +96,7 @@ impl TrainingWindow {
 fn get_next_opponent<'a>(static_ops: &'a mut Vec<Box<dyn Agent>>, past_ops: &'a mut VecDeque<Box<dyn Agent>>, rng: &mut dyn RngCore)
 	-> (Option<&'a mut Box<dyn Agent>>, bool)
 {
-	if past_ops.is_empty() || rng.random_bool(0.7) {
+	if past_ops.is_empty() || rng.random_bool(1.0 - PAST_SELF_PLAY_CHANCE) {
 		(static_ops.choose_mut(rng), false)
 	} else {
 		let index = rng.random_range(0..past_ops.len());
