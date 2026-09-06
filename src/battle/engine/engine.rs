@@ -87,14 +87,23 @@ fn apply_damage(amount: u32, target: PositionId, battle_state: &mut BattleState)
 	}
 }
 
+/// Restore HP, but never to a creature that has already fainted.
+///
+/// A fainted creature stays fainted, as in the games. Without this guard a
+/// creature could be knocked to 0 during the action phase and then healed back
+/// above 0 by an event queued earlier in the same step — most easily a Leech
+/// Seed drain, which heals the *seeder*, who carries no volatile of their own
+/// and so is easy to miss. The engine had already recorded the faint, so the
+/// step ended by asking for a replacement for a creature that was visibly alive
+/// and still on the field. Roughly 8% of battles hit it.
 fn apply_healing(amount: u32, target: PositionId, battle_state: &mut BattleState) -> u32 {
 	match battle_state.get_mut_mon(target) {
-		Some(target_state) => {
+		Some(target_state) if target_state.current_hp > 0 => {
 			let before = target_state.current_hp;
 			target_state.current_hp = before.saturating_add(amount).min(target_state.max_hp);
 			target_state.current_hp - before
 		}
-		None => 0,
+		_ => 0,
 	}
 }
 
@@ -245,6 +254,18 @@ pub fn step(mut battle_state: BattleState, mut commands: Vec<Command>, registry:
 	}
 
 	//println!("fainted: {:?}", fainted);
+
+	// `fainted` is collected as HP reaches zero during the step, but the step is
+	// not over at that point. Anything that restores HP afterwards would leave a
+	// stale entry here, and the caller would be asked to replace a creature that
+	// is alive and still on the field — which the agent cannot do, so it picks a
+	// move instead and the turn silently goes wrong.
+	//
+	// `apply_healing` refusing to revive a fainted creature is what should make
+	// this impossible. This is the invariant restated where it is consumed, so a
+	// future effect that restores HP some other way cannot reintroduce the bug.
+	fainted.retain(|pos| has_fainted(&battle_state, *pos));
+
 	let step_request =
 		if let Some(outcome) = battle_state.outcome() {
 			StepRequest::Finished(outcome)
@@ -2105,6 +2126,93 @@ mod tests {
 				assert_eq!(positions, vec![PositionId(0)]);
 			}
 			other => panic!("expected a single replacement request, got {:?}", other),
+		}
+	}
+
+	/// A fainted creature stays fainted. Healing may not revive it.
+	#[test]
+	fn healing_cannot_revive_a_fainted_creature() {
+		let registry = Registry::load();
+		let mut battle = BattleState::from(
+			vec![CreatureState::from_species(&registry, SpeciesId(2), vec![MoveId(3)])],
+			vec![CreatureState::from_species(&registry, SpeciesId(5), vec![MoveId(14)])],
+			vec![0, 1],
+		);
+		let pos = PositionId(0);
+		battle.get_mut_mon(pos).unwrap().current_hp = 0;
+
+		let healed = apply_healing(50, pos, &mut battle);
+
+		assert_eq!(healed, 0, "a fainted creature must not be healed");
+		assert_eq!(battle.get_mon(pos).unwrap().current_hp, 0);
+	}
+
+	/// The invariant the replacement phase depends on: every position the engine
+	/// asks to have replaced is actually holding a fainted creature.
+	///
+	/// This is the regression test for a real bug. A creature knocked to 0 during
+	/// the action phase could be healed back above 0 later in the same step — a
+	/// Leech Seed drain heals the *seeder*, who carries no volatile of their own —
+	/// while the faint stayed recorded. The engine then asked for a replacement
+	/// for a living creature. The mask correctly allows moves for a creature that
+	/// is alive, so the agent answered a replacement request with an attack and
+	/// the turn silently went wrong. It fired in roughly 8% of battles.
+	#[test]
+	fn replacements_are_only_ever_requested_for_fainted_creatures() {
+		use crate::rl::agent::{Agent, random_agent::RandomAgent};
+		use crate::rl::mask::Mask;
+
+		let registry = Registry::load();
+		let mut rng = rand::rng();
+		// Leech Seed on both sides, which is what surfaced the bug.
+		let team = |ids: [(u32, [u32; 4]); 3]| -> Vec<CreatureState> {
+			ids.iter()
+				.map(|(sid, mv)| CreatureState::from_species(
+					&registry, SpeciesId(*sid), mv.iter().map(|m| MoveId(*m)).collect()))
+				.collect()
+		};
+
+		for _ in 0..400 {
+			let mut battle = BattleState::from(
+				team([(2, [3, 5, 13, 24]), (3, [5, 6, 16, 25]), (4, [12, 15, 9, 22])]),
+				team([(5, [14, 6, 20, 22]), (6, [10, 12, 19, 4]), (7, [16, 6, 5, 26])]),
+				vec![0, 1],
+			);
+			let mut request = StepRequest::NeedsActions;
+			let mut agent = RandomAgent {};
+
+			for _ in 0..300 {
+				let positions: Vec<PositionId> = match request.clone() {
+					StepRequest::Finished(_) => break,
+					StepRequest::NeedsReplacements(positions) => {
+						for pos in &positions {
+							let mon = battle.get_mon(*pos).expect("a creature at the position");
+							assert_eq!(
+								mon.current_hp, 0,
+								"replacement requested for {:?}, which holds a creature on {}/{} hp",
+								pos, mon.current_hp, mon.max_hp,
+							);
+						}
+						positions
+					}
+					StepRequest::NeedsActions => [Team::Zero, Team::One]
+						.into_iter()
+						.map(|team| battle.field.team_positions(&team)[0])
+						.collect(),
+				};
+
+				let encoding = vec![0.0f32; crate::rl::encoder::TOTAL_ENCODING_LEN];
+				let commands: Vec<Command> = positions
+					.into_iter()
+					.map(|pos| {
+						let mask = Mask::from_battle_state(&pos.team(), pos, &battle);
+						agent.choose_move(&encoding, &mask, &mut rng).to_command(pos, &battle, &registry)
+					})
+					.collect();
+
+				StepResult { battle_state: battle, step_request: request } =
+					step(battle, commands, &registry, &mut rng);
+			}
 		}
 	}
 }
