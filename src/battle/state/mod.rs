@@ -41,7 +41,7 @@ impl Team {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum Outcome {
 	Win { team: Team },
 	Draw,

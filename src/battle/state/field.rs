@@ -30,7 +30,7 @@ impl Display for PositionId {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Field {
 	mons: Vec<RosterId>,
 }

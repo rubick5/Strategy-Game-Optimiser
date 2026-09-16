@@ -4,7 +4,12 @@ use crate::{battle::state::{Outcome, Team, creature_state::CreatureState, field:
 use serde::{Deserialize, Serialize};
 use crate::model::speciesdata::Stat;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// `Hash + Eq` so a state can be used as a lookup key. The CFR solver
+/// (`crate::cfr`) keys its regret tables on the position itself, which is only
+/// sound because every field below bottoms out in an integer — there is not a
+/// float anywhere in the state tree, so structural equality really is state
+/// equality and hashing is exact.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BattleState {
 	pub roster: Roster,
 	pub field: Field,
