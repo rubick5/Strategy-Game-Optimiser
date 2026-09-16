@@ -64,6 +64,13 @@ impl Mask {
 		}
 	}
 
+	pub fn get_all_valid(&self) -> Vec<Moveslot> {
+		self.allowed.iter().enumerate()
+			.filter(|(_, b)| **b)
+			.map(|(i, _)| Moveslot::from_number(i))
+			.collect()
+	}
+
 	/**
 	 * Returns a random valid action from our mask.
 	 * Yields None if there are no valid actions
