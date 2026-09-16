@@ -105,7 +105,7 @@ impl std::fmt::Display for VolatileKind {
 }
 
 /// One active condition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Volatile {
 	pub kind: VolatileKind,
 	/// Turns still to run. `None` means "until this creature leaves the field".
@@ -131,7 +131,13 @@ impl Volatile {
 }
 
 /// Every volatile currently on one creature.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `entries` is kept in *insertion* order, because that is the order the battle
+/// UI lists conditions in and the order hooks see them. That matters to anyone
+/// using this as a lookup key: a creature Taunted-then-Seeded and one
+/// Seeded-then-Taunted are the same position but compare unequal. Call
+/// [`Volatiles::canonicalised`] first — see [`crate::cfr::key`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Volatiles {
 	entries: Vec<Volatile>,
 }
@@ -139,6 +145,17 @@ pub struct Volatiles {
 impl Volatiles {
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	/// The same conditions in a fixed order, so that equal positions compare
+	/// equal regardless of the order they were applied in.
+	///
+	/// Sorting by `kind` alone is a total order here because [`add`](Self::add)
+	/// replaces rather than stacks, so a kind appears at most once.
+	pub fn canonicalised(&self) -> Self {
+		let mut entries = self.entries.clone();
+		entries.sort_by_key(|v| v.kind as u8);
+		Volatiles { entries }
 	}
 
 	pub fn get(&self, kind: VolatileKind) -> Option<&Volatile> {
