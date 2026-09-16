@@ -10,7 +10,28 @@
 //! therefore just the public battle state, a position can be solved in
 //! isolation, and none of the belief-state machinery a poker solver needs
 //! applies here.
+//!
+//! The modules, roughly in dependency order:
+//!
+//! * [`key`] — identifying a decision point so that equal positions share
+//!   regrets and unequal ones do not.
+//! * [`infoset`] — regret matching and the tables it accumulates into. Knows
+//!   nothing about battles.
+//! * [`matrix`] — matrix games with known equilibria, driving the same code as
+//!   the battle solver. This is the validation harness, and the reason to trust
+//!   anything below it.
+//! * [`node`] — reading "who decides, and what may they do" out of the engine.
+//! * [`leaf`] — estimating positions the search stops short of, which a 2v2
+//!   cannot do without.
+//! * [`solver`] — external-sampling MCCFR over battle positions.
+//! * [`exploit`] — how much a perfect opponent would gain. The one check that
+//!   does not need the answer known in advance, and the metric everything else
+//!   should be judged against.
+//! * [`critic`] — a leaf estimate the solver trains for itself. Does not yet
+//!   beat the hand-written one; see its own notes.
+//! * [`position`] — the positions to point all this at.
 
+pub mod critic;
 pub mod exploit;
 pub mod infoset;
 pub mod key;
