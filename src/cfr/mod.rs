@@ -11,6 +11,7 @@
 //! isolation, and none of the belief-state machinery a poker solver needs
 //! applies here.
 
+pub mod exploit;
 pub mod infoset;
 pub mod key;
 pub mod leaf;
