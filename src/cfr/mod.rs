@@ -13,4 +13,5 @@
 
 pub mod infoset;
 pub mod key;
+pub mod matrix;
 pub mod position;
