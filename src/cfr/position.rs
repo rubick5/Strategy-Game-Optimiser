@@ -191,6 +191,34 @@ pub fn switch_prediction_2v2(registry: &Registry) -> BattleState {
 	battle(vec![lead(), reserve()], vec![lead(), reserve()])
 }
 
+/// A full six-a-side mirror, for finding out what happens at scale.
+///
+/// Both teams hold every creature in the roster with its designed moveset, so the
+/// position is balanced by construction and its value has to be zero — the same
+/// trick [`mirror_duel`] uses, and the only way to have a known right answer for
+/// a position this size.
+///
+/// Each creature has four moves and five team-mates to switch to, so a node has
+/// nine children against the 2v2's three. Search cost is exponential in that, and
+/// so is the cost of measuring exploitability, which enumerates both sides'
+/// actions rather than sampling one: 81 children per node against 9. A 6v6 is
+/// therefore measurable only at a short horizon, and a short horizon is exactly
+/// where the leaf estimate is carrying the answer.
+pub fn full_team_mirror(registry: &Registry) -> BattleState {
+	let team = || -> Vec<CreatureState> {
+		(2..8u32)
+			.map(|species| {
+				CreatureState::from_species(
+					registry,
+					SpeciesId(species),
+					Registry::default_moveset(SpeciesId(species)),
+				)
+			})
+			.collect()
+	};
+	battle(team(), team())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -225,6 +253,33 @@ mod tests {
 		let registry = Registry::load();
 		assert!(known_answer_duel(&registry).outcome().is_none());
 		assert!(mirror_duel(&registry).outcome().is_none());
+	}
+
+	/// Six a side, so nine legal actions rather than three — the number that makes
+	/// a 6v6 expensive to search and much more expensive to measure.
+	#[test]
+	fn a_full_team_has_every_move_and_every_switch_available() {
+		let registry = Registry::load();
+		let state = full_team_mirror(&registry);
+
+		let mask = Mask::from_battle_state(&Team::Zero, PositionId(0), &state);
+		let legal = mask.allowed.iter().filter(|allowed| **allowed).count();
+		assert_eq!(legal, 9, "four moves and five team-mates to switch to");
+	}
+
+	#[test]
+	fn a_full_team_mirror_is_a_genuine_mirror() {
+		let registry = Registry::load();
+		let state = full_team_mirror(&registry);
+
+		for index in 0..6 {
+			let zero = state.get_mon_from_team(&Team::Zero, index).unwrap();
+			let one = state.get_mon_from_team(&Team::One, index).unwrap();
+			assert_eq!(zero.species_id, one.species_id);
+			assert_eq!(zero.moves, one.moves);
+			assert_eq!(zero.current_hp, one.current_hp);
+		}
+		assert!(state.outcome().is_none());
 	}
 
 	#[test]
