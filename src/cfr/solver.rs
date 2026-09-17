@@ -54,6 +54,8 @@
 //! [`Solver::average_strategy`] is what to read and the current strategy is only
 //! ever used to sample.
 
+use std::collections::HashMap;
+
 use rand::RngCore;
 
 use crate::battle::command::Command;
@@ -125,6 +127,11 @@ pub struct Solver<'r> {
 	leaf: Box<dyn LeafEvaluator>,
 	truncated: u64,
 	nodes_visited: u64,
+	/// Running mean of the value computed at each node, when logging is on.
+	value_log: Option<HashMap<(StateKey, Team), (f32, u32)>>,
+	/// Iterations to skip before logging, so early noise is not recorded.
+	warmup: usize,
+	iteration: usize,
 }
 
 impl<'r> Solver<'r> {
@@ -147,11 +154,45 @@ impl<'r> Solver<'r> {
 			leaf,
 			truncated: 0,
 			nodes_visited: 0,
+			value_log: None,
+			warmup: 0,
+			iteration: 0,
 		}
 	}
 
 	pub fn table(&self) -> &InfosetTable {
 		&self.table
+	}
+
+	/// Record the value computed at every node, for use as training targets.
+	///
+	/// A node's value is an average over the current strategy and everything below
+	/// it, so it is far quieter than the result of a single played-out game — and
+	/// there is one for every position the search touches, not only the handful a
+	/// playout happens to pass through. That is the appeal.
+	///
+	/// The cost is that it is an estimate of an estimate: below the horizon these
+	/// values rest on the leaf evaluator, so training a leaf evaluator on them can
+	/// confirm its own mistakes. Positions searched to a real result carry no such
+	/// debt, which is why the curriculum in [`crate::cfr::critic`] anchors on them.
+	///
+	/// `warmup` is the fraction of iterations to discard first: early strategies
+	/// are close to uniform and their values describe a game nobody is playing.
+	pub fn log_values(&mut self, warmup: f32) {
+		self.value_log = Some(HashMap::new());
+		self.warmup = (self.config.iterations as f32 * warmup.clamp(0.0, 1.0)) as usize;
+	}
+
+	/// Mean value recorded at each position, and how many observations it is
+	/// based on. Empty unless [`Solver::log_values`] was called.
+	pub fn node_values(&self) -> Vec<(&StateKey, Team, f32, u32)> {
+		match &self.value_log {
+			None => Vec::new(),
+			Some(log) => log
+				.iter()
+				.map(|((key, team), (sum, count))| (key, *team, sum / *count as f32, *count))
+				.collect(),
+		}
 	}
 
 	pub fn config(&self) -> &SolverConfig {
@@ -204,6 +245,7 @@ impl<'r> Solver<'r> {
 			if self.hit_node_budget() {
 				break;
 			}
+			self.iteration = iteration;
 			let traverser = if iteration % 2 == 0 { Team::Zero } else { Team::One };
 			self.walk(root.clone(), StepRequest::NeedsActions, traverser, 0, rng);
 		}
@@ -407,6 +449,15 @@ impl<'r> Solver<'r> {
 				node_value += strategy[action] * action_values[action];
 			}
 		}
+
+		if self.iteration >= self.warmup {
+			if let Some(log) = self.value_log.as_mut() {
+				let entry = log.entry((key, traverser)).or_insert((0.0, 0));
+				entry.0 += node_value;
+				entry.1 += 1;
+			}
+		}
+
 		node_value
 	}
 }
