@@ -25,6 +25,26 @@ impl NeuronLayer {
 		self.most_recent_output.clone()
 	}
 
+	/// As [`NeuronLayer::backward`], but collects gradients instead of applying
+	/// them. Returns the error to pass further back, and each neuron's gradient.
+	pub fn backward_gradients(&self, incoming_error: &[f32]) -> (Vec<f32>, Vec<(Vec<f32>, f32)>) {
+		let mut d_prev: Vec<f32> = vec![0.0; self.neurons[0].weights.len()];
+		for neuron_index in 0..self.neurons.len() {
+			for index in 0..d_prev.len() {
+				d_prev[index] += self.neurons[neuron_index].weights[index] * incoming_error[neuron_index];
+			}
+		}
+
+		let gradients = self
+			.neurons
+			.iter()
+			.enumerate()
+			.map(|(index, neuron)| neuron.gradient(incoming_error[index], &self.most_recent_input))
+			.collect();
+
+		(d_prev, gradients)
+	}
+
 	pub fn backward(&mut self, incoming_error: &[f32], learning_rate: f32, weight_decay: f32) -> Vec<f32> {
 		// we need to calculate the error to give to the next row here before we update the weights
 

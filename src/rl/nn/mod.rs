@@ -1,3 +1,4 @@
 pub mod neural_net;
-mod neuron;
-mod neuron_layer;
+pub mod neuron;
+pub mod neuron_layer;
+pub mod optimiser;

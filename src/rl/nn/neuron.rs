@@ -33,6 +33,17 @@ impl Neuron {
 		}
 	}
 
+	/// The gradient of the loss with respect to this neuron's parameters, without
+	/// applying it.
+	///
+	/// [`Neuron::backprop`] computes the same thing and immediately updates, which
+	/// is all a per-sample learner needs. Collecting instead lets a caller average
+	/// gradients over a batch, or run an optimiser that keeps state between steps.
+	/// Returns the weight gradients and the bias gradient.
+	pub fn gradient(&self, error: f32, input_given: &[f32]) -> (Vec<f32>, f32) {
+		(input_given.iter().map(|x| error * x).collect(), error)
+	}
+
 	pub fn backprop(&mut self, error: f32, input_given: &[f32], learning_rate: f32, decay_amount: f32) {
 		for index in 0..self.weights.len() {
 			self.weights[index] = (self.weights[index] - (learning_rate * error * input_given[index]).clamp(-CLIP, CLIP)).clamp(-10.0, 10.0);

@@ -87,6 +87,48 @@ where
 
 	}
 
+	/// Gradients for one sample, without touching the weights.
+	///
+	/// Mirrors [`NeuralNet::backward_with_decay`]'s traversal exactly — output
+	/// layer, then hidden layers in reverse with the activation derivative folded
+	/// in — but collects instead of applying. Returned outermost-layer-first, in
+	/// the same order as `self.layers`.
+	pub fn gradients(&mut self, current_errors: Vec<f32>, input_received: &[f32]) -> Vec<Vec<(Vec<f32>, f32)>> {
+		self.forward(input_received); // sets the pre-activation cache for this sample
+
+		let mut collected: Vec<Vec<(Vec<f32>, f32)>> = vec![Vec::new(); self.layers.len()];
+		let last = self.layers.len() - 1;
+
+		let ((output_layer, _), hidden_layers) = self
+			.layers
+			.split_last_mut()
+			.expect("network needs at least one layer");
+
+		let (mut errors, output_gradients) = output_layer.backward_gradients(&current_errors);
+		collected[last] = output_gradients;
+
+		for (index, (layer, pres)) in hidden_layers.iter_mut().enumerate().rev() {
+			errors.iter_mut().enumerate().for_each(|(i, x)| {
+				*x = *x * (self.hidden_activation_prime)(pres[i])
+			});
+			let (next_errors, gradients) = layer.backward_gradients(&errors);
+			collected[index] = gradients;
+			errors = next_errors;
+		}
+
+		collected
+	}
+
+	/// Mutable access to a layer, so an external optimiser can apply its own
+	/// update rule to the weights.
+	pub fn layer_mut(&mut self, index: usize) -> &mut NeuronLayer {
+		&mut self.layers[index].0
+	}
+
+	pub fn layer_count(&self) -> usize {
+		self.layers.len()
+	}
+
 	pub fn backward_with_decay(&mut self, mut current_errors: Vec<f32>, input_received: &[f32], learning_rate: f32, decay_amount: f32) {
 		self.forward(input_received); // sets the pre_activation cache for this decision made
 		
