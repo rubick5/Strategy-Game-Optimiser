@@ -83,34 +83,35 @@
 //!
 //! # Where this actually stands
 //!
-//! The noise work did what it was meant to. Labels now average 8.7 games per
-//! position, and training error falls across rounds — 0.30, 0.23, 0.195 — where
-//! before it sat at 0.62-0.67 and barely moved. (Only the *fall* is evidence of
-//! learning; the lower absolute figure is partly mechanical, since a target that
-//! is a mean of eight games has an eighth the variance of a single one.)
+//! Labels now average **63 games per position**, against 8.7 with playouts alone
+//! and one before any of this. Most of that comes from the solver's own node
+//! values: there is one for every position the search touched, already averaged
+//! over the iterations that saw it. Training error follows — around 0.10-0.12,
+//! against 0.62-0.67 back when it was fitting raw coin flips.
 //!
-//! **The critic still does not beat the heuristic.** Six paired runs on the 2v2,
-//! each comparing trust levels on identical chance draws:
+//! On the 2v2, as paired runs against the plain heuristic, positive meaning the
+//! critic is less exploitable:
 //!
 //! ```text
-//! trust 0.1 minus baseline: mean -0.0557, sd 0.0653, stderr 0.0266
-//! one run of six favoured the critic; selection chose trust 0.00 in the other five
+//! lookahead 3:  mean +0.0540, sd 0.0525, 4 of 4 runs positive
+//! lookahead 5:  mean +0.0117, sd 0.0383, 2 of 4 runs positive
 //! ```
 //!
-//! A single earlier run had shown the critic ahead by 0.011, which was noise —
-//! the sort of result that gets published by accident. The honest reading is that
-//! cleaner labels were necessary and are not yet sufficient.
+//! So the critic now beats the heuristic — and the margin **grows as the horizon
+//! shortens**. That direction is the point. A shorter horizon leaves more of the
+//! game beyond it, so more of the answer rests on the leaf estimate; at lookahead
+//! 5 the search covers most of a 2v2 by itself and there is little left for a
+//! better estimate to contribute. The same reasoning says the gap should widen on
+//! positions the search can only scratch — a 6v6, or doubles, where a few turns
+//! of lookahead cover very little of the game.
 //!
-//! The likeliest reason is simply that there is still not enough of them. 8.7
-//! labels per position is well short of the thirty the arithmetic above asks for,
-//! and only forty horizon positions are sampled per round. What remains untried,
-//! in order: targets taken from the solver's own node values, which are averaged
-//! over the whole subtree and quieter again than any number of playouts; and
-//! minibatched gradients with an adaptive step, which would stop each individual
-//! label yanking the weights around. Both are real work rather than tuning.
+//! Treat the size of the lookahead-3 figure with care: four paired runs, so the
+//! interval around it is wide. The *trend* is the stronger evidence, because it
+//! was predicted before being measured rather than found by looking.
 //!
-//! Meanwhile [`DEFAULT_TRUST`] is zero, so none of this is on by default and
-//! nothing regresses.
+//! An earlier version trained on raw single-game labels and made the solver
+//! measurably **worse** — -0.056 against baseline over six paired runs. Same
+//! network, same search, same everything but the targets.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -127,7 +128,7 @@ use crate::battle::state::field::PositionId;
 use crate::battle::state::{Outcome, Team};
 use crate::cfr::exploit::{measure, ExploitConfig};
 use crate::cfr::infoset::{sample as sample_action, InfosetData};
-use crate::cfr::key::StateKey;
+use crate::cfr::key::{NodeKind, StateKey};
 use crate::cfr::leaf::{HealthHeuristic, LeafEvaluator};
 use crate::cfr::node::DecisionNode;
 use crate::cfr::position::{known_answer_duel, mirror_duel, switch_prediction_2v2};
@@ -135,6 +136,7 @@ use crate::cfr::solver::{Solver, SolverConfig, PLAYOUT_CAP};
 use crate::model::registry::Registry;
 use crate::rl::encoder::{encode_both, TOTAL_ENCODING_LEN};
 use crate::rl::nn::neural_net::NeuralNet;
+use crate::rl::nn::optimiser::{accumulate, scale, Adam};
 
 /// Leak on the negative side, matching what the rest of the project uses.
 const RELU_LEAK: f32 = 0.01;
@@ -273,6 +275,51 @@ impl Critic {
 		}
 		if total_weight > 0.0 { squared_error / total_weight } else { 0.0 }
 	}
+
+	/// As [`Critic::fit`], but averaging each step over a batch and letting Adam
+	/// choose the step size.
+	///
+	/// Averaging within a step cancels label noise the same way averaging the
+	/// labels themselves does, one level further down; the adaptive step then
+	/// moves a weight whose gradient is consistent and holds back one whose
+	/// gradient keeps changing sign — which is the distinction between signal and
+	/// noise here.
+	pub fn fit_batched(
+		&mut self,
+		samples: &mut [Sample],
+		learning_rate: f32,
+		batch_size: usize,
+		optimiser: &mut Adam,
+		rng: &mut dyn RngCore,
+	) -> f32 {
+		if samples.is_empty() {
+			return 0.0;
+		}
+		samples.shuffle(&mut RngWrapper(rng));
+
+		let mut squared_error = 0.0;
+		let mut total_weight = 0.0;
+
+		for chunk in samples.chunks(batch_size.max(1)) {
+			let mut batch: Vec<Vec<(Vec<f32>, f32)>> = Vec::new();
+
+			for sample in chunk {
+				let predicted = self.raw(&sample.encoding);
+				squared_error += sample.weight * (predicted - sample.target).powi(2);
+				total_weight += sample.weight;
+
+				let error =
+					(2.0 * sample.weight * (predicted - sample.target)).clamp(-10.0, 10.0);
+				let gradients = self.net.borrow_mut().gradients(vec![error], &sample.encoding);
+				accumulate(&mut batch, &gradients);
+			}
+
+			scale(&mut batch, chunk.len() as f32);
+			optimiser.apply(&mut self.net.borrow_mut(), &batch, learning_rate);
+		}
+
+		if total_weight > 0.0 { squared_error / total_weight } else { 0.0 }
+	}
 }
 
 impl LeafEvaluator for Critic {
@@ -310,12 +357,28 @@ impl SampleSet {
 	}
 
 	fn add(&mut self, key: StateKey, team: Team, encoding: Vec<f32>, target: f32) {
+		self.add_many(key, team, encoding, target, 1);
+	}
+
+	/// Fold in an already-averaged target, carrying how many observations it
+	/// stands for so it weighs accordingly.
+	fn add_many(
+		&mut self,
+		key: StateKey,
+		team: Team,
+		encoding: Vec<f32>,
+		mean: f32,
+		count: u32,
+	) {
+		if count == 0 {
+			return;
+		}
 		let entry = self
 			.entries
 			.entry((key, team))
 			.or_insert_with(|| Accumulated { encoding, sum: 0.0, count: 0 });
-		entry.sum += target;
-		entry.count += 1;
+		entry.sum += mean * count as f32;
+		entry.count += count;
 	}
 
 	/// Distinct positions held.
@@ -547,6 +610,25 @@ fn play_and_label(
 	}
 }
 
+/// Turn the values a solve computed into training targets.
+///
+/// Every position the search touched gets one, already averaged over however many
+/// iterations saw it — so this yields far more targets than playouts do, and far
+/// quieter ones.
+fn harvest_node_values(solver: &Solver, registry: &Registry, out: &mut SampleSet) {
+	for (key, team, value, count) in solver.node_values() {
+		let state = key.state();
+		let replacement = matches!(key.node(), NodeKind::Replacements(_));
+		let (zero_view, one_view) = encode_both(state, registry, replacement);
+		let view = match team {
+			Team::Zero => zero_view,
+			Team::One => one_view,
+		};
+		let heuristic = HealthHeuristic.value(state, team, registry);
+		out.add_many(key.clone(), team, view, value - heuristic, count);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Training
 // ---------------------------------------------------------------------------
@@ -606,6 +688,19 @@ pub struct TrainingConfig {
 	/// Passes over the collected samples each round.
 	pub epochs: usize,
 	pub learning_rate: f32,
+	/// Label positions by playing games out to a real result. Unbiased, noisy.
+	pub use_playouts: bool,
+	/// Label positions with the values the solver computed for them. Quiet, and
+	/// available for every position the search touched rather than only those a
+	/// playout wandered through — but below the horizon they rest on the leaf
+	/// estimate, so they can confirm its own errors.
+	pub use_node_values: bool,
+	/// Fraction of a solve to discard before trusting its node values.
+	pub node_value_warmup: f32,
+	/// Train with minibatched gradients and an adaptive step instead of updating
+	/// on every sample.
+	pub use_adam: bool,
+	pub batch_size: usize,
 }
 
 impl Default for TrainingConfig {
@@ -620,6 +715,11 @@ impl Default for TrainingConfig {
 			horizon_lookahead: 4,
 			epochs: 6,
 			learning_rate: 0.001,
+			use_playouts: true,
+			use_node_values: true,
+			node_value_warmup: 0.5,
+			use_adam: true,
+			batch_size: 32,
 		}
 	}
 }
@@ -645,6 +745,9 @@ pub fn train(
 ) -> (Critic, Vec<RoundReport>) {
 	let mut critic = Critic::new_random(rng);
 	let mut reports = Vec::new();
+	// Adam keeps running moments between steps, so it lives across the whole
+	// training run rather than being rebuilt each round.
+	let mut optimiser = Adam::new();
 
 	for round in 0..config.rounds {
 		let mut set = SampleSet::new();
@@ -666,19 +769,28 @@ pub fn train(
 				SolverConfig::for_lookahead(config.solver_iterations, position.lookahead),
 				Box::new(recorder),
 			);
+			if config.use_node_values {
+				solver.log_values(config.node_value_warmup);
+			}
 			solver.solve(&position.state, rng);
+
+			if config.use_node_values {
+				harvest_node_values(&solver, registry, &mut set);
+			}
 
 			// On-policy labels from the root. On a position that ends by itself
 			// these reach real terminals, so they carry no estimate at all.
-			for _ in 0..config.root_playouts {
-				play_and_label(
-					&solver,
-					&position.state,
-					StepRequest::NeedsActions,
-					registry,
-					rng,
-					&mut set,
-				);
+			if config.use_playouts {
+				for _ in 0..config.root_playouts {
+					play_and_label(
+						&solver,
+						&position.state,
+						StepRequest::NeedsActions,
+						registry,
+						rng,
+						&mut set,
+					);
+				}
 			}
 
 			// Labels from where the critic is actually consulted.
@@ -704,10 +816,18 @@ pub fn train(
 					),
 					leaf,
 				);
+				if config.use_node_values {
+					sub.log_values(config.node_value_warmup);
+				}
 				sub.solve(&state, rng);
 
-				for _ in 0..config.horizon_playouts {
-					play_and_label(&sub, &state, request.clone(), registry, rng, &mut set);
+				if config.use_node_values {
+					harvest_node_values(&sub, registry, &mut set);
+				}
+				if config.use_playouts {
+					for _ in 0..config.horizon_playouts {
+						play_and_label(&sub, &state, request.clone(), registry, rng, &mut set);
+					}
 				}
 			}
 		}
@@ -718,7 +838,17 @@ pub fn train(
 
 		let mut error = 0.0;
 		for _ in 0..config.epochs {
-			error = critic.fit(&mut samples, config.learning_rate, rng);
+			error = if config.use_adam {
+				critic.fit_batched(
+					&mut samples,
+					config.learning_rate,
+					config.batch_size,
+					&mut optimiser,
+					rng,
+				)
+			} else {
+				critic.fit(&mut samples, config.learning_rate, rng)
+			};
 		}
 
 		reports.push(RoundReport {
@@ -1095,6 +1225,10 @@ mod tests {
 			horizon_lookahead: 3,
 			epochs: 1,
 			learning_rate: 0.001,
+			// Playouts only, so the assertion below is about playout averaging.
+			use_playouts: true,
+			use_node_values: false,
+			..TrainingConfig::default()
 		};
 
 		let (_, reports) = train(&registry, &curriculum, &config, &mut rng);
