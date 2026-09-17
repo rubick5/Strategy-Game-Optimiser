@@ -39,4 +39,6 @@ pub mod leaf;
 pub mod matrix;
 pub mod node;
 pub mod position;
+pub mod probe;
+pub mod resolve;
 pub mod solver;

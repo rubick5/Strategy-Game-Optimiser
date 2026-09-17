@@ -241,13 +241,27 @@ impl<'r> Solver<'r> {
 	/// Traversers alternate, so both players' regrets improve and neither is
 	/// optimised against a frozen opponent.
 	pub fn solve(&mut self, root: &BattleState, rng: &mut dyn RngCore) {
+		self.solve_from(root, StepRequest::NeedsActions, rng);
+	}
+
+	/// Solve from a position that may be mid-turn — owing a replacement, say.
+	///
+	/// [`Solver::solve`] assumes a fresh turn, which is right for a position
+	/// someone hands you and wrong for one the search walked into. Re-solving from
+	/// an arbitrary position needs this.
+	pub fn solve_from(
+		&mut self,
+		root: &BattleState,
+		request: StepRequest,
+		rng: &mut dyn RngCore,
+	) {
 		for iteration in 0..self.config.iterations {
 			if self.hit_node_budget() {
 				break;
 			}
 			self.iteration = iteration;
 			let traverser = if iteration % 2 == 0 { Team::Zero } else { Team::One };
-			self.walk(root.clone(), StepRequest::NeedsActions, traverser, 0, rng);
+			self.walk(root.clone(), request.clone(), traverser, 0, rng);
 		}
 	}
 
