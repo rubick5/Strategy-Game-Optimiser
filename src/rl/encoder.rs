@@ -6,7 +6,8 @@
 //! The layout is always:
 //!
 //! ```text
-//! [ my actives | their actives | my bench | their bench | active movesets | field ]
+//! [ my actives | their actives | my bench | their bench | active movesets
+//!   | matchups | field ]
 //! ```
 //!
 //! so slot 0 is always "me" and the network never has to learn which side of the
@@ -20,11 +21,31 @@
 //! per-creature blocks are perspective-independent, so it builds each one once
 //! and assembles the two orderings from the same pieces.
 //!
+//! # Matchups
+//!
+//! Every creature's own block describes it in isolation — typing, bulk, health,
+//! status. That is enough to say who is on the bench, and not enough to say what
+//! they *mean*. "They have a Steel type in reserve that my Poison attacker cannot
+//! touch" is a fact about a *pair* of creatures, and nothing in a per-creature
+//! block can express it.
+//!
+//! So the encoding carries a matchup matrix: every creature against every
+//! opposing creature, both directions. See [`MATCHUP_LEN`]. This is what lets an
+//! agent — or the CFR solver's leaf estimate — weigh a switch against a reserve
+//! it cannot handle, rather than discovering it the hard way.
+//!
 //! # Retraining
 //!
-//! `TOTAL_ENCODING_LEN` is unchanged by the perspective work, but the *meaning*
-//! of every slot has moved. A net trained on the old layout will load and produce
-//! confident nonsense. Retrain.
+//! Two changes have moved this encoding, and they fail differently.
+//!
+//! The perspective work left `TOTAL_ENCODING_LEN` alone but moved the *meaning*
+//! of every slot. That is the dangerous kind: a net trained on the old layout
+//! loads happily and produces confident nonsense.
+//!
+//! The matchup block changes the length, 655 to 799. That one is safe in the
+//! sense that it cannot be ignored — `Neuron::forward` panics on a width
+//! mismatch, so an old `agent.json` fails loudly rather than quietly. Retrain
+//! either way.
 
 use crate::{
 	battle::hooks::HookTable,
@@ -85,11 +106,39 @@ const MOVE_ENCODING_LEN: usize = 6;
 /// "slot 2" with no idea what slot 2 does.
 const ACTIVE_MOVES_LEN: usize = ACTIVE_COUNT * MOVESLOT_COUNT * MOVE_ENCODING_LEN;
 
+/// Per ordered pair of creatures: the best type multiplier the attacker can
+/// reach against that defender, and the best multiplier weighted by the move's
+/// power.
+///
+/// Two numbers rather than one because they answer different questions. The
+/// multiplier alone says whether the type relationship is favourable — an
+/// immunity shows up as a hard zero. Weighting by power says whether the
+/// attacker actually *carries* something to exploit it with, which a creature
+/// with the right typing and the wrong moves does not.
+const MATCHUP_VALUES: usize = 2;
+
+/// Every creature against every opposing creature, both directions.
+///
+/// This is the block that makes reserves legible. Without it the encoding
+/// describes who is on the bench — their typing, bulk and health are all in
+/// their own blocks — but says nothing about how they *interact* with the other
+/// side. "They have a Steel type in the back that my Poison attacker cannot
+/// touch" was simply not representable: it is a fact about a pair, and every
+/// other part of the encoding is about a single creature.
+///
+/// Storing the derived matchup rather than the bench's raw movesets is
+/// deliberate. Raw movesets would be `MON_COUNT * MOVESLOT_COUNT *
+/// MOVE_ENCODING_LEN` — nearly doubling the input — and would leave the network
+/// to rediscover the type chart from win/loss signal before it could use any of
+/// it. This gives it the answer directly, in a fifth of the space, which matters
+/// when the thing consuming it is a small MLP trained on limited data.
+const MATCHUP_LEN: usize = 2 * TEAM_SIZE * TEAM_SIZE * MATCHUP_VALUES;
+
 /// Weather one-hot, weather turns left, trick room, replacement flag.
 const FIELD_ENCODING_LEN: usize = WEATHER_COUNT + 1 + 1 + 1;
 
 pub const TOTAL_ENCODING_LEN: usize =
-	MON_COUNT * MON_ENCODING_LEN + ACTIVE_MOVES_LEN + FIELD_ENCODING_LEN;
+	MON_COUNT * MON_ENCODING_LEN + ACTIVE_MOVES_LEN + MATCHUP_LEN + FIELD_ENCODING_LEN;
 
 /// The roster slots in the order `team` should see them:
 /// my actives, their actives, my bench, their bench.
@@ -97,18 +146,9 @@ pub const TOTAL_ENCODING_LEN: usize =
 /// Always returns exactly `MON_COUNT` entries, because every roster slot belongs
 /// to exactly one team and is either active or benched.
 fn perspective_order(battle_state: &BattleState, team: &Team) -> Vec<usize> {
-	let actives_of = |t: &Team| -> Vec<usize> {
-		battle_state
-			.field
-			.team_positions(t)
-			.iter()
-			.map(|pos| battle_state.field[*pos].0)
-			.collect()
-	};
-
 	let foe = team.other();
-	let mine_active = actives_of(team);
-	let theirs_active = actives_of(&foe);
+	let mine_active = actives_of(battle_state, team);
+	let theirs_active = actives_of(battle_state, &foe);
 
 	let mut order: Vec<usize> = Vec::with_capacity(MON_COUNT);
 	order.extend(mine_active.iter().copied());
@@ -120,6 +160,28 @@ fn perspective_order(battle_state: &BattleState, team: &Team) -> Vec<usize> {
 	order
 }
 
+/// The roster slots this team currently has on the field.
+fn actives_of(battle_state: &BattleState, team: &Team) -> Vec<usize> {
+	battle_state
+		.field
+		.team_positions(team)
+		.iter()
+		.map(|pos| battle_state.field[*pos].0)
+		.collect()
+}
+
+/// One team's roster slots, actives first then the bench.
+///
+/// Exactly `TEAM_SIZE` entries, in an order that does not depend on who is
+/// looking — so the matchup block lines up with the per-creature blocks.
+fn team_order(battle_state: &BattleState, team: &Team) -> Vec<usize> {
+	let actives = actives_of(battle_state, team);
+	let mut order = actives.clone();
+	order.extend(team.roster_ids().into_iter().filter(|rid| !actives.contains(rid)));
+	debug_assert_eq!(order.len(), TEAM_SIZE);
+	order
+}
+
 /// Encode the battle as `team` sees it.
 pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool, team: &Team) -> Vec<f32> {
 	let order = perspective_order(battle_state, team);
@@ -127,6 +189,7 @@ pub fn encode(battle_state: &BattleState, registry: &Registry, replacement: bool
 	hooks.refresh(battle_state, registry);
 	assemble(
 		battle_state, registry, replacement, &order, &hooks, active_positions(battle_state, team),
+		(&team_order(battle_state, team), &team_order(battle_state, &team.other())),
 		&|rid| encode_mon(battle_state.roster.get_mon(RosterId(rid)), registry),
 	)
 }
@@ -159,15 +222,20 @@ pub fn encode_both(
 	let mut hooks = HookTable::new();
 	hooks.refresh(battle_state, registry);
 
+	let zero_order = team_order(battle_state, &Team::Zero);
+	let one_order = team_order(battle_state, &Team::One);
+
 	let zero = assemble(
 		battle_state, registry, replacement,
 		&perspective_order(battle_state, &Team::Zero),
-		&hooks, active_positions(battle_state, &Team::Zero), &lookup,
+		&hooks, active_positions(battle_state, &Team::Zero),
+		(&zero_order, &one_order), &lookup,
 	);
 	let one = assemble(
 		battle_state, registry, replacement,
 		&perspective_order(battle_state, &Team::One),
-		&hooks, active_positions(battle_state, &Team::One), &lookup,
+		&hooks, active_positions(battle_state, &Team::One),
+		(&one_order, &zero_order), &lookup,
 	);
 	(zero, one)
 }
@@ -180,6 +248,8 @@ fn assemble(
 	order: &[usize],
 	hooks: &HookTable,
 	actives: (Option<PositionId>, Option<PositionId>),
+	// This viewer's roster slots, then their opponent's, actives first.
+	teams: (&[usize], &[usize]),
 	mon_block: &dyn Fn(usize) -> Vec<f32>,
 ) -> Vec<f32> {
 	let mut y: Vec<f32> = Vec::with_capacity(TOTAL_ENCODING_LEN);
@@ -199,6 +269,9 @@ fn assemble(
 		let (attacker, defender) = if slot == 0 { (mine, theirs) } else { (theirs, mine) };
 		y.extend(encode_moveset(creature, registry, battle_state, hooks, attacker, defender));
 	}
+
+	let (mine, theirs) = teams;
+	y.extend(encode_matchups(battle_state, registry, mine, theirs));
 
 	y.extend(encode_field(battle_state, replacement));
 
@@ -278,6 +351,86 @@ fn encode_mon(op_mon: Option<&CreatureState>, registry: &Registry) -> Vec<f32> {
 }
 
 /// The four move slots of one active creature, scored against `opposing`.
+/// Every creature against every opposing creature, my side attacking first.
+///
+/// Both directions are present because they are different questions: what my
+/// team can do to theirs, and what theirs can do to mine. A reserve that walls my
+/// attacker and a reserve that threatens it are both worth knowing about, and
+/// neither implies the other.
+fn encode_matchups(
+	battle_state: &BattleState,
+	registry: &Registry,
+	mine: &[usize],
+	theirs: &[usize],
+) -> Vec<f32> {
+	let mut v: Vec<f32> = Vec::with_capacity(MATCHUP_LEN);
+	for (attackers, defenders) in [(mine, theirs), (theirs, mine)] {
+		for attacker in attackers {
+			for defender in defenders {
+				v.extend(matchup(
+					battle_state.roster.get_mon(RosterId(*attacker)),
+					battle_state.roster.get_mon(RosterId(*defender)),
+					registry,
+				));
+			}
+		}
+	}
+	debug_assert_eq!(v.len(), MATCHUP_LEN);
+	v
+}
+
+/// The best this attacker can do to this defender, by type.
+///
+/// Status moves are skipped — they have no chart interaction, and counting them
+/// would make a creature holding only status moves look like it threatened
+/// everything equally.
+///
+/// Abilities are deliberately *not* consulted. `final_effectiveness` needs both
+/// creatures to be on the field, and the whole point of this block is the pairs
+/// that are not. A Levitate holder's Ground immunity is therefore missing here —
+/// but the ability is a one-hot in that creature's own block, so the information
+/// is present and the network can combine the two.
+///
+/// A fainted or absent creature scores zero in both directions: it neither
+/// threatens nor can be threatened.
+fn matchup(
+	attacker: Option<&CreatureState>,
+	defender: Option<&CreatureState>,
+	registry: &Registry,
+) -> Vec<f32> {
+	let (attacker, defender) = match (attacker, defender) {
+		(Some(a), Some(d)) if a.current_hp > 0 && d.current_hp > 0 => (a, d),
+		_ => return vec![0.0; MATCHUP_VALUES],
+	};
+
+	let attacker_typing = registry.get_species_data(attacker.species_id).typing;
+	let defender_typing = registry.get_species_data(defender.species_id).typing;
+
+	let mut best_multiplier = 0.0f32;
+	let mut best_threat = 0.0f32;
+
+	for move_id in attacker.moves.iter() {
+		let mv = registry.get_move(*move_id);
+		if !mv.move_type.is_damaging() {
+			continue;
+		}
+		let chart = typing::effectiveness(mv.element, &defender_typing);
+		let effectiveness = if attacker_typing.contains(mv.element) {
+			chart.with_stab()
+		} else {
+			chart
+		};
+
+		// Scaled the same way `move_multiplier` scales, so the two blocks speak
+		// the same units.
+		let multiplier = effectiveness.as_f32() / 4.0;
+		best_multiplier = best_multiplier.max(multiplier);
+		best_threat = best_threat.max(multiplier * mv.base_power as f32 / POWER_SCALAR);
+	}
+
+	vec![best_multiplier, best_threat]
+}
+
 fn encode_moveset(
 	op_mon: Option<&CreatureState>,
 	registry: &Registry,
@@ -403,6 +556,7 @@ mod tests {
 	use crate::battle::state::roster::RosterId;
 	use crate::battle::state::weather::{TimedWeather, Weather};
 	use crate::model::speciesdata::SpeciesId;
+	use crate::model::pmove::MoveId;
 
 	fn mon(registry: &Registry, id: u32) -> CreatureState {
 		CreatureState::from_species(registry, SpeciesId(id), Registry::default_moveset(SpeciesId(id)))
@@ -578,6 +732,108 @@ mod tests {
 	}
 
 	/// The agent can tell its own move slots apart.
+	/// The block exists for exactly this: a reserve that changes what the
+	/// position is worth without changing anyone's health.
+	///
+	/// Two boards, identical in every creature's HP, differing only in what sits
+	/// on the opponent's bench — a Steel type my Poison attacker cannot touch at
+	/// all, versus a Grass type it hits for double. Before the matchup block these
+	/// encoded differently only in the reserve's own type bits, leaving the
+	/// network to work out the interaction itself; now the consequence is stated.
+	#[test]
+	fn a_reserve_that_walls_my_attacker_changes_the_encoding() {
+		let registry = Registry::load();
+
+		// mireling (Water/Poison) holding only a Poison move.
+		let attacker = || {
+			CreatureState::from_species(&registry, SpeciesId(4), vec![MoveId(8)])
+		};
+		let opposing_lead = || {
+			CreatureState::from_species(&registry, SpeciesId(5), vec![MoveId(14)])
+		};
+		// brackenox is Steel/Ground: Poison cannot touch it.
+		let steel_wall = CreatureState::from_species(&registry, SpeciesId(7), vec![MoveId(16)]);
+		// gustling is Electric: Poison hits it normally.
+		let ordinary = CreatureState::from_species(&registry, SpeciesId(6), vec![MoveId(10)]);
+
+		let walled = BattleState::from(
+			vec![attacker()], vec![opposing_lead(), steel_wall], vec![0, 1],
+		);
+		let free = BattleState::from(
+			vec![attacker()], vec![opposing_lead(), ordinary], vec![0, 1],
+		);
+
+		let walled_view = encode(&walled, &registry, false, &Team::Zero);
+		let free_view = encode(&free, &registry, false, &Team::Zero);
+
+		assert_ne!(walled_view, free_view, "a walling reserve has to be visible");
+
+		// And specifically in the matchup block, not only in the reserve's types.
+		let start = MON_COUNT * MON_ENCODING_LEN + ACTIVE_MOVES_LEN;
+		let end = start + MATCHUP_LEN;
+		assert_ne!(
+			walled_view[start..end],
+			free_view[start..end],
+			"the matchup block should be where the difference shows up",
+		);
+	}
+
+	/// An immunity is the sharpest case and must read as a hard zero, not a small
+	/// number, or "cannot touch it" is indistinguishable from "barely dents it".
+	#[test]
+	fn an_immune_defender_scores_zero_threat() {
+		let registry = Registry::load();
+		// Poison attacker against Steel/Ground, and against a Grass control.
+		let poisoner = CreatureState::from_species(&registry, SpeciesId(4), vec![MoveId(8)]);
+		let steel = CreatureState::from_species(&registry, SpeciesId(7), vec![MoveId(16)]);
+		let grass = CreatureState::from_species(&registry, SpeciesId(5), vec![MoveId(14)]);
+
+		let immune = matchup(Some(&poisoner), Some(&steel), &registry);
+		let hit = matchup(Some(&poisoner), Some(&grass), &registry);
+
+		assert_eq!(immune, vec![0.0, 0.0], "Poison does nothing at all to Steel");
+		assert!(hit[0] > 0.0 && hit[1] > 0.0, "Poison should threaten Grass: {hit:?}");
+	}
+
+	/// Typing alone is not the whole story: a creature can have the right type
+	/// relationship and no move to use it with.
+	#[test]
+	fn threat_accounts_for_what_the_attacker_actually_carries() {
+		let registry = Registry::load();
+		let target = CreatureState::from_species(&registry, SpeciesId(5), vec![MoveId(14)]);
+
+		// cinder blast (80 power) versus flame lash (65), both Fire on Grass.
+		let strong = CreatureState::from_species(&registry, SpeciesId(2), vec![MoveId(4)]);
+		let weaker = CreatureState::from_species(&registry, SpeciesId(2), vec![MoveId(3)]);
+
+		let strong_threat = matchup(Some(&strong), Some(&target), &registry);
+		let weak_threat = matchup(Some(&weaker), Some(&target), &registry);
+
+		assert_eq!(
+			strong_threat[0], weak_threat[0],
+			"same type relationship, so the multiplier should match",
+		);
+		assert!(
+			strong_threat[1] > weak_threat[1],
+			"the stronger move should read as the bigger threat: {strong_threat:?} vs {weak_threat:?}",
+		);
+	}
+
+	/// A creature that has fainted is neither a threat nor a target.
+	#[test]
+	fn a_fainted_creature_drops_out_of_the_matchups() {
+		let registry = Registry::load();
+		let mut attacker = CreatureState::from_species(&registry, SpeciesId(2), vec![MoveId(3)]);
+		let target = CreatureState::from_species(&registry, SpeciesId(5), vec![MoveId(14)]);
+
+		let alive = matchup(Some(&attacker), Some(&target), &registry);
+		assert!(alive[0] > 0.0);
+
+		attacker.current_hp = 0;
+		assert_eq!(matchup(Some(&attacker), Some(&target), &registry), vec![0.0, 0.0]);
+		assert_eq!(matchup(None, Some(&target), &registry), vec![0.0, 0.0]);
+	}
+
 	#[test]
 	fn active_movesets_are_encoded() {
 		let registry = Registry::load();
