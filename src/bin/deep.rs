@@ -1,0 +1,275 @@
+//! Long solves, and lead selection.
+//!
+//! `solve` runs one position for as long as you let it, reporting as it goes.
+//! `leads` answers the team-preview question: given two teams, which creature
+//! should each side send out, and how often?
+//!
+//! Both print a running trace rather than only a final answer, because the
+//! interesting question about a long run is usually whether it had settled.
+
+use std::error::Error;
+use std::time::Instant;
+
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+
+use strat_optimizer::battle::engine::engine::StepRequest;
+use strat_optimizer::battle::state::battle_state::BattleState;
+use strat_optimizer::battle::state::{Team, TEAM_SIZE};
+use strat_optimizer::cfr::matrix::MatrixGame;
+use strat_optimizer::cfr::node::DecisionNode;
+use strat_optimizer::cfr::position;
+use strat_optimizer::cfr::solver::{action_label, Solver, SolverConfig};
+use strat_optimizer::model::registry::Registry;
+use strat_optimizer::rl::moveslot::MAX_DECISION;
+
+fn usage() -> String {
+	String::from(
+		"usage:\n  \
+		 deep solve <position> <lookahead> <iterations> [report-every]\n  \
+		 deep leads <position> <lookahead> <iterations-per-matchup>\n\n\
+		 <position> is a builtin name or a path to a battle JSON:\n  \
+		 switch_prediction_2v2 | full_team_mirror | known_answer_duel | mirror_duel",
+	)
+}
+
+fn load(name: &str, registry: &Registry) -> Result<BattleState, Box<dyn Error>> {
+	Ok(match name {
+		"switch_prediction_2v2" => position::switch_prediction_2v2(registry),
+		"full_team_mirror" => position::full_team_mirror(registry),
+		"known_answer_duel" => position::known_answer_duel(registry),
+		"mirror_duel" => position::mirror_duel(registry),
+		path => BattleState::from_file(path)?,
+	})
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+	let args: Vec<String> = std::env::args().collect();
+	if args.len() < 5 {
+		println!("{}", usage());
+		return Ok(());
+	}
+
+	let registry = Registry::load();
+	let root = load(&args[2], &registry)?;
+	let lookahead: usize = args[3].parse()?;
+	let iterations: usize = args[4].parse()?;
+
+	match args[1].as_str() {
+		"solve" => {
+			let report_every: usize =
+				args.get(5).map(|a| a.parse()).transpose()?.unwrap_or(iterations / 20).max(1);
+			solve(&registry, &root, lookahead, iterations, report_every, &args[2]);
+		}
+		"leads" => leads(&registry, &root, lookahead, iterations),
+		_ => println!("{}", usage()),
+	}
+	Ok(())
+}
+
+/// Describe the position, so a pasted log is self-contained.
+fn describe(registry: &Registry, root: &BattleState) {
+	let alive = |team: &Team| {
+		(0..TEAM_SIZE)
+			.filter_map(|i| root.get_mon_from_team(team, i))
+			.map(|mon| registry.get_species_data(mon.species_id).name.clone())
+			.collect::<Vec<_>>()
+	};
+	println!("  team zero: {}", alive(&Team::Zero).join(", "));
+	println!("  team one : {}", alive(&Team::One).join(", "));
+
+	if let DecisionNode::Decision { actors } = DecisionNode::from(root, &StepRequest::NeedsActions) {
+		for actor in actors {
+			let legal: Vec<String> = (0..MAX_DECISION)
+				.filter(|i| actor.mask.allowed[*i])
+				.map(|i| action_label(i, &actor, root, registry))
+				.collect();
+			println!("  {:?} options ({}): {}", actor.team, legal.len(), legal.join(" | "));
+		}
+	}
+}
+
+/// The strategy at the root, as a printable line.
+fn strategy_line(
+	registry: &Registry,
+	root: &BattleState,
+	solver: &Solver,
+	team: Team,
+) -> String {
+	let actors = match DecisionNode::from(root, &StepRequest::NeedsActions) {
+		DecisionNode::Decision { actors } => actors,
+		DecisionNode::Terminal(_) => return String::from("(finished)"),
+	};
+	let Some(actor) = actors.iter().find(|a| a.team == team) else {
+		return String::from("(not deciding)");
+	};
+	let Some(strategy) = solver.root_strategy(root, team) else {
+		return String::from("(never reached)");
+	};
+
+	let mut parts: Vec<(f32, String)> = (0..MAX_DECISION)
+		.filter(|i| actor.mask.allowed[*i])
+		.map(|i| (strategy[i], action_label(i, actor, root, registry)))
+		.collect();
+	parts.sort_by(|a, b| b.0.total_cmp(&a.0));
+	parts
+		.iter()
+		.map(|(p, name)| format!("{name} {:.0}%", p * 100.0))
+		.collect::<Vec<_>>()
+		.join("  ")
+}
+
+fn solve(
+	registry: &Registry,
+	root: &BattleState,
+	lookahead: usize,
+	iterations: usize,
+	report_every: usize,
+	name: &str,
+) {
+	println!("=== solve: {name} ===");
+	describe(registry, root);
+	println!(
+		"  lookahead {lookahead}, {iterations} iterations, reporting every {report_every}"
+	);
+	println!("  (cost grows about fivefold per extra turn of lookahead)\n");
+
+	let mut rng = StdRng::seed_from_u64(20260918);
+	let mut solver = Solver::new(
+		registry,
+		SolverConfig { iterations: report_every, max_depth: lookahead, ..SolverConfig::default() },
+	);
+	solver.log_values(0.5);
+
+	let start = Instant::now();
+	let chunks = iterations.div_ceil(report_every);
+
+	for chunk in 1..=chunks {
+		solver.solve(root, &mut rng);
+		let done = chunk * report_every;
+
+		println!("[{done}/{iterations}] {:.1?} elapsed", start.elapsed());
+		println!(
+			"    {} nodes, {} infosets, {} estimated at the horizon",
+			solver.nodes_visited(),
+			solver.table().len(),
+			solver.truncated_positions(),
+		);
+		if let Some(value) = solver.root_value(root, &StepRequest::NeedsActions, Team::Zero) {
+			println!("    value to team zero: {value:+.4}");
+		}
+		println!("    zero: {}", strategy_line(registry, root, &solver, Team::Zero));
+		println!("    one : {}", strategy_line(registry, root, &solver, Team::One));
+		if solver.hit_node_budget() {
+			println!("    STOPPED on the node budget — this answer is not converged");
+			break;
+		}
+		println!();
+	}
+
+	println!("=== done in {:.1?} ===", start.elapsed());
+	println!("value (playing it out): {:+.4}", solver.evaluate(root, 4_000, &mut rng));
+	println!("zero: {}", strategy_line(registry, root, &solver, Team::Zero));
+	println!("one : {}", strategy_line(registry, root, &solver, Team::One));
+}
+
+/// Which creature should each side lead, and how often?
+///
+/// Every pairing is solved separately, giving a value for each cell of a team
+/// preview matrix. The lead choice itself is then a simultaneous decision over
+/// those values — a matrix game, solved exactly — so the answer is a mixture
+/// rather than a single best lead, which is what the question actually calls for
+/// whenever no lead is safe against everything.
+fn leads(registry: &Registry, root: &BattleState, lookahead: usize, iterations: usize) {
+	println!("=== leads ===");
+	describe(registry, root);
+
+	let members = |team: &Team| -> Vec<(usize, String)> {
+		(0..TEAM_SIZE)
+			.filter_map(|i| {
+				root.get_mon_from_team(team, i)
+					.filter(|mon| mon.current_hp > 0)
+					.map(|mon| (i, registry.get_species_data(mon.species_id).name.clone()))
+			})
+			.collect()
+	};
+	let zero = members(&Team::Zero);
+	let one = members(&Team::One);
+	println!(
+		"  {} x {} = {} matchups, {iterations} iterations each at lookahead {lookahead}\n",
+		zero.len(),
+		one.len(),
+		zero.len() * one.len(),
+	);
+
+	let start = Instant::now();
+	let mut payoff: Vec<Vec<f32>> = Vec::new();
+
+	for (i, zero_name) in &zero {
+		let mut row = Vec::new();
+		for (j, one_name) in &one {
+			// Roster slots interleave: team zero at i*2, team one at j*2+1.
+			let mut state = root.clone();
+			state.field = strat_optimizer::battle::state::field::Field::from(vec![i * 2, j * 2 + 1]);
+
+			let mut rng = StdRng::seed_from_u64(20260918);
+			let mut solver = Solver::new(
+				registry,
+				SolverConfig { iterations, max_depth: lookahead, ..SolverConfig::default() },
+			);
+			solver.log_values(0.5);
+			solver.solve(&state, &mut rng);
+
+			let value = solver
+				.root_value(&state, &StepRequest::NeedsActions, Team::Zero)
+				.unwrap_or_else(|| solver.evaluate(&state, 2_000, &mut rng));
+			row.push(value);
+
+			println!(
+				"  {zero_name} vs {one_name}: {value:+.4}   ({} infosets, {:.1?} elapsed)",
+				solver.table().len(),
+				start.elapsed(),
+			);
+		}
+		payoff.push(row);
+	}
+
+	println!("\n=== lead matrix (value to team zero) ===");
+	print!("{:>14}", "");
+	for (_, name) in &one {
+		print!("{name:>14}");
+	}
+	println!();
+	for (index, (_, name)) in zero.iter().enumerate() {
+		print!("{name:>14}");
+		for value in &payoff[index] {
+			print!("{value:>+14.4}");
+		}
+		println!();
+	}
+
+	if zero.len() > MAX_DECISION || one.len() > MAX_DECISION {
+		println!("\n(too many leads to solve the preview game here)");
+		return;
+	}
+
+	let game = MatrixGame::new(payoff);
+	let (zero_mix, one_mix) = game.solve(200_000);
+
+	println!("\n=== how often to lead each ===");
+	for (index, (_, name)) in zero.iter().enumerate() {
+		println!("  zero  {name:>14}: {:>6.1}%", zero_mix[index] * 100.0);
+	}
+	for (index, (_, name)) in one.iter().enumerate() {
+		println!("  one   {name:>14}: {:>6.1}%", one_mix[index] * 100.0);
+	}
+	println!(
+		"\nvalue of the preview game to team zero: {:+.4}",
+		game.value(&zero_mix, &one_mix),
+	);
+	println!(
+		"lead-choice exploitability: {:.5}   (0 means this mixture is unbeatable *given the matrix*)",
+		game.exploitability(&zero_mix, &one_mix),
+	);
+	println!("\ntotal {:.1?}", start.elapsed());
+}
