@@ -16,6 +16,8 @@
 //! This is also why the 1v1 work was done first — there, a wrong answer could
 //! only come from the CFR itself, with no leaf estimate to share the blame.
 
+use std::rc::Rc;
+
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::Team;
 use crate::model::registry::Registry;
@@ -67,6 +69,21 @@ impl LeafEvaluator for HealthHeuristic {
 		// team sizes are, and stays comparable with a real win or loss.
 		let scale = count(&team).max(count(&other)).max(1) as f32;
 		((health(&team) - health(&other)) / scale).clamp(-1.0, 1.0)
+	}
+}
+
+/// One leaf estimate shared by many solvers.
+///
+/// A `Solver` owns its evaluator, so re-solving builds a new one each time — and
+/// an evaluator that caches expensive work would throw the cache away on every
+/// solve. [`crate::cfr::resolve::ResolvingPolicy`] re-solves constantly, so this
+/// matters: sharing one cache across thousands of solves is the difference
+/// between a rollout-based leaf being usable and being unaffordable.
+pub struct SharedLeaf(pub Rc<dyn LeafEvaluator>);
+
+impl LeafEvaluator for SharedLeaf {
+	fn value(&self, state: &BattleState, team: Team, registry: &Registry) -> f32 {
+		self.0.value(state, team, registry)
 	}
 }
 
