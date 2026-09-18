@@ -83,35 +83,40 @@
 //!
 //! # Where this actually stands
 //!
-//! Labels now average **63 games per position**, against 8.7 with playouts alone
-//! and one before any of this. Most of that comes from the solver's own node
-//! values: there is one for every position the search touched, already averaged
-//! over the iterations that saw it. Training error follows — around 0.10-0.12,
-//! against 0.62-0.67 back when it was fitting raw coin flips.
+//! The machinery works. Labels average 10-13 games per position, against one
+//! before any of this; training error falls across rounds, 0.110 to 0.084; the
+//! loop is a ratchet that cannot return something worse than the heuristic.
 //!
-//! On the 2v2, as paired runs against the plain heuristic, positive meaning the
-//! critic is less exploitable:
+//! **There is still no reliable evidence the critic beats the heuristic.**
 //!
-//! ```text
-//! lookahead 3:  mean +0.0540, sd 0.0525, 4 of 4 runs positive
-//! lookahead 5:  mean +0.0117, sd 0.0383, 2 of 4 runs positive
-//! ```
+//! That conclusion took three tries to reach, and each intermediate answer looked
+//! better than the truth, so the path is worth recording.
 //!
-//! So the critic now beats the heuristic — and the margin **grows as the horizon
-//! shortens**. That direction is the point. A shorter horizon leaves more of the
-//! game beyond it, so more of the answer rests on the leaf estimate; at lookahead
-//! 5 the search covers most of a 2v2 by itself and there is little left for a
-//! better estimate to contribute. The same reasoning says the gap should widen on
-//! positions the search can only scratch — a 6v6, or doubles, where a few turns
-//! of lookahead cover very little of the game.
+//! Measured with a fresh seed each round, the unchanged heuristic scored anywhere
+//! from 0.035 to 0.203 — a sixfold spread on a strategy that never moved. Any
+//! comparison built on that is reading noise.
 //!
-//! Treat the size of the lookahead-3 figure with care: four paired runs, so the
-//! interval around it is wide. The *trend* is the stronger evidence, because it
-//! was predicted before being measured rather than found by looking.
+//! Measured against one *fixed* seed, the loop looked excellent: every round beat
+//! the baseline, the best by 0.0223 against 0.1920. Held out on three seeds it had
+//! not been selected against, that critic beat the heuristic **once**. The seed
+//! had been selected, not the critic.
 //!
-//! An earlier version trained on raw single-game labels and made the solver
-//! measurably **worse** — -0.056 against baseline over six paired runs. Same
-//! network, same search, same everything but the targets.
+//! Measured against three seeds averaged — [`SelectionConfig::seeds`] — the
+//! baseline is a stable 0.1867 and selection chooses trust **zero**, the plain
+//! heuristic, in three rounds of four. The fourth scrapes 0.1837, a gain of 0.003.
+//! Held out: better on one seed of three, which is what a coin flip looks like.
+//!
+//! The same doubt applies backwards. An earlier measurement reported the critic
+//! ahead by 0.054 at lookahead 3; it took the *better* of two trust values per
+//! seed, which biases upward the same way. That figure should not be relied on
+//! either.
+//!
+//! So the honest position: cleaner labels and a working loop were necessary, and
+//! are not sufficient. What they bought is a criterion strict enough to say so —
+//! which is worth more than the earlier numbers that said otherwise.
+//!
+//! [`DEFAULT_TRUST`] is zero and selection keeps choosing it, so nothing here is
+//! on by default and nothing has regressed.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -736,6 +741,87 @@ pub struct RoundReport {
 	pub mean_squared_error: f32,
 }
 
+/// Gather one round's worth of labels.
+///
+/// Two sources, both wanted. The root solve and its playouts give on-policy
+/// positions, and on a position that ends by itself those playouts reach real
+/// terminals — labels with no estimate anywhere in them. The horizon positions
+/// give the distribution the critic is actually consulted on, which the playouts
+/// never visit.
+pub fn collect_round(
+	registry: &Registry,
+	leaf: &dyn Fn() -> Box<dyn LeafEvaluator>,
+	curriculum: &[TrainingPosition],
+	config: &TrainingConfig,
+	rng: &mut dyn RngCore,
+) -> SampleSet {
+	let mut set = SampleSet::new();
+
+	for position in curriculum {
+		let (recorder, reservoir) =
+			HorizonRecorder::new(leaf(), config.horizon_positions, rng.next_u64());
+
+		let mut solver = Solver::with_leaf(
+			registry,
+			SolverConfig::for_lookahead(config.solver_iterations, position.lookahead),
+			Box::new(recorder),
+		);
+		if config.use_node_values {
+			solver.log_values(config.node_value_warmup);
+		}
+		solver.solve(&position.state, rng);
+
+		if config.use_node_values {
+			harvest_node_values(&solver, registry, &mut set);
+		}
+		if config.use_playouts {
+			for _ in 0..config.root_playouts {
+				play_and_label(
+					&solver,
+					&position.state,
+					StepRequest::NeedsActions,
+					registry,
+					rng,
+					&mut set,
+				);
+			}
+		}
+
+		for state in reservoir.states() {
+			let request = pending_request(&state);
+			if matches!(request, StepRequest::Finished(_)) {
+				continue;
+			}
+			// The main solve has no strategy past its own horizon, so give this
+			// position a short solve of its own before playing it out. Playing
+			// uniformly would label it with the value of random play.
+			let mut sub = Solver::with_leaf(
+				registry,
+				SolverConfig::for_lookahead(
+					config.horizon_solve_iterations,
+					config.horizon_lookahead,
+				),
+				leaf(),
+			);
+			if config.use_node_values {
+				sub.log_values(config.node_value_warmup);
+			}
+			sub.solve_from(&state, request.clone(), rng);
+
+			if config.use_node_values {
+				harvest_node_values(&sub, registry, &mut set);
+			}
+			if config.use_playouts {
+				for _ in 0..config.horizon_playouts {
+					play_and_label(&sub, &state, request.clone(), registry, rng, &mut set);
+				}
+			}
+		}
+	}
+
+	set
+}
+
 /// Train a critic by solving positions and learning from how they turn out.
 pub fn train(
 	registry: &Registry,
@@ -750,87 +836,15 @@ pub fn train(
 	let mut optimiser = Adam::new();
 
 	for round in 0..config.rounds {
-		let mut set = SampleSet::new();
-
-		for position in curriculum {
-			// Round zero has nothing trained yet, so it plays off the hand-written
-			// heuristic. Later rounds solve with what has been learned.
-			let base: Box<dyn LeafEvaluator> = if round == 0 {
-				Box::new(HealthHeuristic)
-			} else {
-				Box::new(critic.clone())
-			};
-
-			let (recorder, reservoir) =
-				HorizonRecorder::new(base, config.horizon_positions, rng.next_u64());
-
-			let mut solver = Solver::with_leaf(
-				registry,
-				SolverConfig::for_lookahead(config.solver_iterations, position.lookahead),
-				Box::new(recorder),
-			);
-			if config.use_node_values {
-				solver.log_values(config.node_value_warmup);
-			}
-			solver.solve(&position.state, rng);
-
-			if config.use_node_values {
-				harvest_node_values(&solver, registry, &mut set);
-			}
-
-			// On-policy labels from the root. On a position that ends by itself
-			// these reach real terminals, so they carry no estimate at all.
-			if config.use_playouts {
-				for _ in 0..config.root_playouts {
-					play_and_label(
-						&solver,
-						&position.state,
-						StepRequest::NeedsActions,
-						registry,
-						rng,
-						&mut set,
-					);
-				}
-			}
-
-			// Labels from where the critic is actually consulted.
-			let horizon = reservoir.states();
-			for state in horizon {
-				let request = pending_request(&state);
-				if matches!(request, StepRequest::Finished(_)) {
-					continue;
-				}
-				// The main solve has no strategy past its own horizon, so give this
-				// position a short solve of its own before playing it out. Playing
-				// uniformly would label it with the value of random play.
-				let leaf: Box<dyn LeafEvaluator> = if round == 0 {
-					Box::new(HealthHeuristic)
-				} else {
-					Box::new(critic.clone())
-				};
-				let mut sub = Solver::with_leaf(
-					registry,
-					SolverConfig::for_lookahead(
-						config.horizon_solve_iterations,
-						config.horizon_lookahead,
-					),
-					leaf,
-				);
-				if config.use_node_values {
-					sub.log_values(config.node_value_warmup);
-				}
-				sub.solve(&state, rng);
-
-				if config.use_node_values {
-					harvest_node_values(&sub, registry, &mut set);
-				}
-				if config.use_playouts {
-					for _ in 0..config.horizon_playouts {
-						play_and_label(&sub, &state, request.clone(), registry, rng, &mut set);
-					}
-				}
-			}
-		}
+		// Round zero has nothing trained yet, so it plays off the hand-written
+		// heuristic. Later rounds solve with what has been learned, and the labels
+		// improve because the play does.
+		let set = if round == 0 {
+			collect_round(registry, &|| Box::new(HealthHeuristic), curriculum, config, rng)
+		} else {
+			let snapshot = critic.clone();
+			collect_round(registry, &|| Box::new(snapshot.clone()), curriculum, config, rng)
+		};
 
 		let positions = set.len();
 		let labels = set.labels();
@@ -887,6 +901,15 @@ pub struct SelectionReport {
 impl SelectionReport {
 	/// How much the chosen critic improved on the heuristic. Never negative,
 	/// because trust zero is always a candidate.
+	/// Exploitability at the trust that was chosen.
+	pub fn chosen_exploitability(&self) -> f32 {
+		self.candidates
+			.iter()
+			.find(|candidate| candidate.trust == self.chosen)
+			.map(|candidate| candidate.exploitability)
+			.unwrap_or(self.baseline)
+	}
+
 	pub fn improvement(&self) -> f32 {
 		let chosen = self
 			.candidates
@@ -900,6 +923,18 @@ impl SelectionReport {
 
 pub struct SelectionConfig {
 	pub trusts: Vec<f32>,
+	/// Evaluation seeds to average over.
+	///
+	/// One is not enough, and the failure is instructive. Selecting the best of
+	/// six training rounds against a single seed produced a critic measuring 0.026
+	/// against a 0.192 baseline — and on three seeds it had never been selected
+	/// against, it beat the heuristic once. The seed had been chosen, not the
+	/// critic.
+	///
+	/// Averaging over several makes the criterion something a critic has to be
+	/// generally good to satisfy rather than specifically lucky. It is the
+	/// difference between a validation set and a validation sample.
+	pub seeds: Vec<u64>,
 	pub solver_iterations: usize,
 	/// Lookahead used for every candidate, and therefore for the best-response
 	/// measurement too, so the two describe the same game.
@@ -911,6 +946,7 @@ impl Default for SelectionConfig {
 	fn default() -> Self {
 		SelectionConfig {
 			trusts: vec![0.0, 0.1, 0.25, 0.5, 1.0],
+			seeds: vec![0x5EED, 0x5EED + 1, 0x5EED + 2],
 			solver_iterations: 1_500,
 			lookahead: 5,
 			chance_samples: 1,
@@ -942,38 +978,44 @@ pub fn select_trust(
 	// Common random numbers across candidates. Each trust level is judged on a
 	// different solve, and every solve samples the engine's chance rolls; left to
 	// their own seeds the candidates differ by that noise as much as by the thing
-	// being compared, and the search would happily pick whichever got lucky. One
-	// seed per position, reused for every candidate, pairs them up.
-	let seed = rng.next_u64();
+	// being compared, and the search would happily pick whichever got lucky. Every
+	// candidate faces the same seeds, in the same order, on the same positions.
+	let seeds: Vec<u64> = if config.seeds.is_empty() {
+		vec![rng.next_u64()]
+	} else {
+		config.seeds.clone()
+	};
 
 	for trust in config.trusts.iter().copied() {
 		let mut total = 0.0;
-		for (index, position) in positions.iter().enumerate() {
-			let mut candidate = critic.clone();
-			candidate.trust = trust;
+		let mut measurements = 0;
 
-			let mut paired = StdRng::seed_from_u64(seed.wrapping_add(index as u64));
+		for seed in seeds.iter().copied() {
+			for (index, position) in positions.iter().enumerate() {
+				let mut candidate = critic.clone();
+				candidate.trust = trust;
 
-			let mut solver = Solver::with_leaf(
-				registry,
-				SolverConfig::for_lookahead(config.solver_iterations, config.lookahead),
-				Box::new(candidate),
-			);
-			solver.solve(position, &mut paired);
+				let mut paired = StdRng::seed_from_u64(seed.wrapping_add(index as u64));
 
-			let exploit_config = ExploitConfig {
-				chance_samples: config.chance_samples,
-				..ExploitConfig::matching(&solver)
-			};
-			total += measure(&solver, position, exploit_config, &mut paired).exploitability;
+				let mut solver = Solver::with_leaf(
+					registry,
+					SolverConfig::for_lookahead(config.solver_iterations, config.lookahead),
+					Box::new(candidate),
+				);
+				solver.solve(position, &mut paired);
+
+				let exploit_config = ExploitConfig {
+					chance_samples: config.chance_samples,
+					..ExploitConfig::matching(&solver)
+				};
+				total += measure(&solver, position, exploit_config, &mut paired).exploitability;
+				measurements += 1;
+			}
 		}
+
 		candidates.push(TrustCandidate {
 			trust,
-			exploitability: if positions.is_empty() {
-				0.0
-			} else {
-				total / positions.len() as f32
-			},
+			exploitability: if measurements == 0 { 0.0 } else { total / measurements as f32 },
 		});
 	}
 
@@ -1255,6 +1297,7 @@ mod tests {
 
 		let config = SelectionConfig {
 			trusts: vec![0.0, 0.5, 1.0],
+			seeds: vec![1, 2],
 			solver_iterations: 150,
 			lookahead: 4,
 			chance_samples: 1,
@@ -1273,6 +1316,100 @@ mod tests {
 			report.chosen, chosen.exploitability, report.baseline,
 		);
 		assert!(report.improvement() >= -1e-6, "improvement cannot be negative");
+	}
+
+	fn tiny_rebel_config() -> RebelConfig {
+		RebelConfig {
+			rounds: 3,
+			training: TrainingConfig {
+				rounds: 1, solver_iterations: 40, root_playouts: 8,
+				horizon_positions: 4, horizon_playouts: 4,
+				horizon_solve_iterations: 20, horizon_lookahead: 3,
+				epochs: 1, learning_rate: 0.001,
+				use_playouts: true, use_node_values: true, node_value_warmup: 0.5,
+				use_adam: true, batch_size: 16,
+			},
+			selection: SelectionConfig {
+				trusts: vec![0.0, 0.25], seeds: vec![99],
+				solver_iterations: 60, lookahead: 3, chance_samples: 1,
+			},
+		}
+	}
+
+	/// The safety property. Every round is measured against the plain heuristic,
+	/// which sits in the candidate list as trust zero, so the loop cannot hand back
+	/// something worse than having no critic at all.
+	#[test]
+	fn the_loop_never_ends_worse_than_the_heuristic() {
+		let registry = registry();
+		let mut rng = StdRng::seed_from_u64(11);
+		let evaluation = vec![switch_prediction_2v2(&registry)];
+
+		let (critic, trust, rounds) = rebel(
+			&registry,
+			&[TrainingPosition {
+				name: String::from("2v2"),
+				state: switch_prediction_2v2(&registry),
+				lookahead: 4,
+			}],
+			&evaluation,
+			&tiny_rebel_config(),
+			&mut rng,
+		);
+
+		assert_eq!(rounds.len(), 3);
+		let best = rounds
+			.iter()
+			.map(|round| round.exploitability)
+			.fold(f32::INFINITY, f32::min);
+
+		for round in &rounds {
+			assert!(
+				round.exploitability <= round.baseline + 1e-6,
+				"round {} chose something worse than the heuristic: {:.4} vs {:.4}",
+				round.round, round.exploitability, round.baseline,
+			);
+		}
+		assert_eq!(critic.trust, trust, "the returned critic carries its chosen trust");
+		assert!(
+			rounds.iter().any(|round| (round.exploitability - best).abs() < 1e-6),
+			"the best round should be among those recorded",
+		);
+	}
+
+	/// A round is kept only when it improves on everything before it, so the
+	/// flags describe a running minimum rather than per-round noise.
+	#[test]
+	fn kept_rounds_are_strictly_improving() {
+		let registry = registry();
+        let mut rng = StdRng::seed_from_u64(12);
+		let evaluation = vec![switch_prediction_2v2(&registry)];
+
+		let (_, _, rounds) = rebel(
+			&registry,
+			&[TrainingPosition {
+				name: String::from("2v2"),
+				state: switch_prediction_2v2(&registry),
+				lookahead: 4,
+			}],
+			&evaluation,
+			&tiny_rebel_config(),
+			&mut rng,
+		);
+
+		let mut best = f32::INFINITY;
+		for round in &rounds {
+			let improves = round.exploitability < best;
+			assert_eq!(
+				round.kept, improves,
+				"round {} marked kept={} but {:.4} against a running best of {:.4}",
+				round.round, round.kept, round.exploitability, best,
+			);
+			if improves {
+				best = round.exploitability;
+			}
+		}
+		assert!(rounds[0].kept, "the first round always improves on nothing");
 	}
 
 	#[test]
@@ -1295,4 +1432,154 @@ mod tests {
 		assert!((before - loaded.value(&state, Team::Zero, &registry)).abs() < 1e-6);
 		let _ = std::fs::remove_file(path);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The loop
+// ---------------------------------------------------------------------------
+
+/// One turn of the loop, and what it was worth.
+pub struct RebelRound {
+	pub round: usize,
+	pub positions: usize,
+	pub labels: u64,
+	pub labels_per_position: f32,
+	pub mean_squared_error: f32,
+	/// Exploitability at the trust this round's critic measured best at.
+	pub exploitability: f32,
+	pub trust: f32,
+	/// The plain heuristic, measured the same way, as the bar to clear.
+	pub baseline: f32,
+	/// Whether this round produced the best critic so far.
+	pub kept: bool,
+}
+
+pub struct RebelConfig {
+	pub rounds: usize,
+	pub training: TrainingConfig,
+	pub selection: SelectionConfig,
+}
+
+impl Default for RebelConfig {
+	fn default() -> Self {
+		RebelConfig {
+			rounds: 8,
+			training: TrainingConfig { rounds: 1, ..TrainingConfig::default() },
+			selection: SelectionConfig::default(),
+		}
+	}
+}
+
+/// Solve, learn from the solves, solve again with what was learned.
+///
+/// # The idea
+///
+/// A depth-limited solve is only as good as its guess at the horizon, and the
+/// guess is only as good as what it was trained on — which came from earlier
+/// solves. Each turn of that loop should leave both a little better: better
+/// estimates make better solves, which make better labels, which make better
+/// estimates. This is ReBeL's structure, and the reason it is worth running here
+/// is that a battle cannot be searched to the end, so the horizon is permanent
+/// and the only way past it is to know what lies beyond.
+///
+/// # Why it does not spiral
+///
+/// The obvious objection to training an estimate on values that rest on that same
+/// estimate is that it can confirm its own mistakes, settling somewhere stable
+/// and wrong. Three things hold that off.
+///
+/// The curriculum is anchored on positions that end by themselves, searched to
+/// real results, whose labels owe nothing to any estimate.
+///
+/// Labels are averaged over many games per position rather than taken one at a
+/// time, so what the network fits is mostly signal — the difference between this
+/// working at all and the earlier attempt that made the solver measurably worse.
+///
+/// And every round is **measured**, not assumed. A round is kept only if it
+/// beats what came before on exploitability, with the plain heuristic always in
+/// the running. So the loop is a ratchet: a round that learns something harmful
+/// is discarded, and the worst case is that nothing improves and the heuristic is
+/// what comes back.
+pub fn rebel(
+	registry: &Registry,
+	curriculum: &[TrainingPosition],
+	evaluation: &[BattleState],
+	config: &RebelConfig,
+	rng: &mut dyn RngCore,
+) -> (Critic, f32, Vec<RebelRound>) {
+	let mut critic = Critic::new_random(rng);
+	let mut optimiser = Adam::new();
+	let mut rounds = Vec::new();
+
+	// Trust zero is the heuristic, so this starting point is "no critic at all"
+	// and cannot be beaten by something worse.
+	let mut best = critic.clone();
+	let mut best_trust = 0.0f32;
+	let mut best_exploitability = f32::INFINITY;
+
+	for round in 0..config.rounds {
+		// The first round has nothing trained, so it plays off the heuristic.
+		// After that it solves with the best critic found so far rather than the
+		// most recent one — there is no reason to gather labels through a round
+		// that measured worse.
+		let set = if round == 0 {
+			collect_round(registry, &|| Box::new(HealthHeuristic), curriculum, &config.training, rng)
+		} else {
+			let mut snapshot = best.clone();
+			snapshot.trust = best_trust;
+			collect_round(registry, &|| Box::new(snapshot.clone()), curriculum, &config.training, rng)
+		};
+
+		let positions = set.len();
+		let labels = set.labels();
+		let mut samples = set.into_samples();
+
+		let mut error = 0.0;
+		for _ in 0..config.training.epochs {
+			error = if config.training.use_adam {
+				critic.fit_batched(
+					&mut samples,
+					config.training.learning_rate,
+					config.training.batch_size,
+					&mut optimiser,
+					rng,
+				)
+			} else {
+				critic.fit(&mut samples, config.training.learning_rate, rng)
+			};
+		}
+
+		// `select_trust` carries its own fixed seeds, so every round faces identical
+		// conditions and rounds can be compared with each other at all. Measured
+		// with a fresh seed each round instead, the *unchanged* heuristic scored
+		// anywhere from 0.035 to 0.203, and a ratchet built on numbers that noisy
+		// is selecting noise.
+		let report = select_trust(registry, &critic, evaluation, &config.selection, rng);
+		let exploitability = report.chosen_exploitability();
+		let kept = exploitability < best_exploitability;
+		if kept {
+			best = critic.clone();
+			best_trust = report.chosen;
+			best_exploitability = exploitability;
+		}
+
+		rounds.push(RebelRound {
+			round,
+			positions,
+			labels,
+			labels_per_position: if positions == 0 {
+				0.0
+			} else {
+				labels as f32 / positions as f32
+			},
+			mean_squared_error: error,
+			exploitability,
+			trust: report.chosen,
+			baseline: report.baseline,
+			kept,
+		});
+	}
+
+	best.trust = best_trust;
+	(best, best_trust, rounds)
 }
