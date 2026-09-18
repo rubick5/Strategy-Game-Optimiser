@@ -1318,6 +1318,184 @@ mod tests {
 		assert!(report.improvement() >= -1e-6, "improvement cannot be negative");
 	}
 
+	/// How good are these estimates actually, against values that are exactly
+	/// known?
+	///
+	/// CFR's regret at a node is invariant to adding a constant to every sibling's
+	/// value, so in principle what matters is not accuracy but how *consistent* an
+	/// error is between the positions being compared. That suggested the heuristic
+	/// kept winning because its errors cancelled between siblings while a learned
+	/// critic's did not.
+	///
+	/// **The measurement does not support that.** Against 1v1 positions solved to
+	/// terminal — exact, no estimate anywhere in the reference:
+	///
+	/// ```text
+	///                        LEVELS   DIFFERENCES   ratio
+	/// seen species   heur    0.5657        0.8809    1.56
+	///                critic  0.4903        0.7188    1.47
+    /// unseen species heur    0.8703        0.6278    0.72
+	///                critic  0.7773        0.6578    0.85
+	/// ```
+	///
+	/// The critic is better on levels everywhere, and the sibling-difference
+	/// comparison flips sign between the two sets, on 17 and 88 pairs. There is no
+	/// consistent structural advantage to the heuristic to be found here.
+	///
+	/// What is robust is the magnitude. **Both estimators sit at 0.5 to 0.9 RMS
+	/// against truth, on a scale where the whole game runs from -1 to +1.** Neither
+	/// is close. That is the finding worth carrying forward, because it explains
+	/// what a year of swapping leaf estimates could not: the learned critic, the
+	/// ReBeL loop and the multi-valued leaf all landed at parity with the heuristic
+	/// because at four turns of lookahead the *search* is doing the work and every
+	/// available estimate is nearly uninformative. Replacing one nearly
+	/// uninformative estimate with another is not going to move anything.
+	///
+	/// Slow, so it does not run by default. `cargo test -- --ignored`.
+	#[test]
+	#[ignore]
+	fn probe_sibling_error() {
+		use crate::cfr::leaf::LeafEvaluator;
+		use crate::cfr::node::DecisionNode;
+		use crate::battle::engine::engine::{self, StepResult};
+		use crate::rl::moveslot::MAX_DECISION;
+		use crate::battle::state::creature_state::CreatureState;
+		use crate::model::speciesdata::SpeciesId;
+
+		let registry = registry();
+		let mut rng = StdRng::seed_from_u64(4242);
+
+		// A critic trained the usual way, so this is the thing that keeps losing.
+		let cfg = TrainingConfig { rounds: 2, ..TrainingConfig::default() };
+		let (mut critic, _) = train(&registry, &default_curriculum(&registry), &cfg, &mut rng);
+		critic.trust = 1.0;
+
+		// The reference has to be exact, or this measures the reference. A 1v1 ends
+		// by itself, so solving one reaches real terminals with no estimate
+		// anywhere in it — which is the only way to get a truth to compare against.
+		// A deeper 2v2 solve will not do: it uses the heuristic at its own leaves,
+		// so scoring the heuristic against it is circular.
+		let reference = |state: &BattleState, request: &StepRequest, team: Team,
+		                 rng: &mut dyn RngCore| -> Option<f32> {
+			let mut solver = Solver::new(&registry, SolverConfig {
+				iterations: 4_000, max_depth: 200, ..SolverConfig::default() });
+			solver.log_values(0.5);
+			solver.solve_from(state, request.clone(), rng);
+			let key = StateKey::new(state, request)?;
+			solver
+				.node_values()
+				.into_iter()
+				.find(|(k, t, _, _)| *k == &key && *t == team)
+				.map(|(_, _, value, _)| value)
+		};
+
+		// The curriculum trains on species 2, 3 and 5. "Seen" duels are built from
+		// those; "unseen" from 4, 6 and 7, which the critic has never met. If its
+		// advantage is really generalisation rather than error structure, it should
+		// survive the first set and not the second.
+		let duel = |a: u32, b: u32| -> BattleState {
+			BattleState::from(
+				vec![CreatureState::from_species(
+					&registry, SpeciesId(a), Registry::default_moveset(SpeciesId(a)))],
+				vec![CreatureState::from_species(
+					&registry, SpeciesId(b), Registry::default_moveset(SpeciesId(b)))],
+				vec![0, 1],
+			)
+		};
+		let seen = vec![known_answer_duel(&registry), mirror_duel(&registry)];
+		let unseen = vec![duel(4, 6), duel(6, 7), duel(4, 7)];
+
+		for (label, roots) in [("SEEN species", seen), ("UNSEEN species", unseen)] {
+		let mut level_heuristic: Vec<f32> = Vec::new();
+		let mut level_critic: Vec<f32> = Vec::new();
+		let mut diff_heuristic: Vec<f32> = Vec::new();
+		let mut diff_critic: Vec<f32> = Vec::new();
+		let mut groups = 0;
+
+		// Walk a few games, and at each position take one player's actions as a
+		// sibling group — the opponent's action held fixed across them, exactly as
+		// the solver does when it expands a node.
+		for game in 0..8u64 {
+			let mut state = roots[(game as usize) % roots.len()].clone();
+			let mut request = StepRequest::NeedsActions;
+			let mut walk_rng = StdRng::seed_from_u64(900 + game);
+
+			for _ in 0..3 {
+				let actors = match DecisionNode::from(&state, &request) {
+					DecisionNode::Terminal(_) => break,
+					DecisionNode::Decision { actors } => actors,
+				};
+				let subject = actors[0];
+				let others: Vec<_> = actors.iter().filter(|a| a.team != subject.team).collect();
+				// Fixed once, so the siblings differ only in the subject's action.
+				let fixed: Vec<_> = others
+					.iter()
+					.map(|a| {
+						let action = a.mask.get_random_valid(&mut walk_rng).unwrap();
+						a.command(action.to_number(), &state, &registry)
+					})
+					.collect();
+
+				let mut children = Vec::new();
+				for action in 0..MAX_DECISION {
+					if !subject.mask.allowed[action] {
+						continue;
+					}
+					let mut commands = fixed.clone();
+					commands.push(subject.command(action, &state, &registry));
+					let StepResult { battle_state, step_request } =
+						engine::step(state.clone(), commands, &registry, &mut walk_rng);
+					if matches!(step_request, StepRequest::Finished(_)) {
+						continue;
+					}
+					if let Some(truth) =
+						reference(&battle_state, &step_request, subject.team, &mut walk_rng)
+					{
+						let h = HealthHeuristic.value(&battle_state, subject.team, &registry);
+						let c = critic.value(&battle_state, subject.team, &registry);
+						children.push((truth, h, c));
+					}
+				}
+
+				if children.len() >= 2 {
+					groups += 1;
+					for (truth, h, c) in &children {
+						level_heuristic.push(h - truth);
+						level_critic.push(c - truth);
+					}
+					for i in 0..children.len() {
+						for j in (i + 1)..children.len() {
+							let (ta, ha, ca) = children[i];
+							let (tb, hb, cb) = children[j];
+							diff_heuristic.push((ha - hb) - (ta - tb));
+							diff_critic.push((ca - cb) - (ta - tb));
+						}
+					}
+				}
+
+                // Move on.
+				let mut commands = fixed;
+				let action = subject.mask.get_random_valid(&mut walk_rng).unwrap();
+				commands.push(subject.command(action.to_number(), &state, &registry));
+				let StepResult { battle_state, step_request } =
+					engine::step(state, commands, &registry, &mut walk_rng);
+				state = battle_state;
+				request = step_request;
+			}
+		}
+
+		let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len().max(1) as f32).sqrt();
+		println!("\n{label} (reference: 1v1 solved to terminal, exact)");
+		println!("  {groups} groups, {} children, {} pairs",
+			level_heuristic.len(), diff_heuristic.len());
+		println!("                  error on LEVELS   error on DIFFERENCES");
+		println!("  heuristic  :        {:.4}              {:.4}",
+			rms(&level_heuristic), rms(&diff_heuristic));
+		println!("  critic     :        {:.4}              {:.4}",
+			rms(&level_critic), rms(&diff_critic));
+		}
+	}
+
 	fn tiny_rebel_config() -> RebelConfig {
 		RebelConfig {
 			rounds: 3,
