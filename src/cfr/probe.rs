@@ -30,7 +30,39 @@
 //! reported beside the result, because the two readings mean different things: a
 //! prober beating a well-covered agent has found a hole in the strategy, while
 //! one beating a poorly covered agent may only have found the gaps in the
-//! lookup. The fix is more coverage, not a different reading of the number.
+//! lookup.
+//!
+//! [`ResolvingAgent`] avoids the problem. [`Agent::observe`] hands over the
+//! position before the encoding is asked about, so the agent can search from it —
+//! no precomputation, no gaps, and its horizon travels with it instead of being
+//! fixed at turn one.
+//!
+//! # What the two actually measure
+//!
+//! Head to head on the 2v2, same search budget, 1,500 measurement battles each:
+//!
+//! ```text
+//!          frozen table        live resolver
+//! seed 1   0.529 (80% cover)   0.543
+//! seed 2   0.606 (66% cover)   0.557
+//! ```
+//!
+//! Searching live is **not** meaningfully harder to beat. It was expected to be,
+//! on the reasoning that a table fixed at turn one has fallen behind by turn ten
+//! while a resolver has not. Seed 1 says otherwise, and the two together put both
+//! around 0.55.
+//!
+//! What live resolving does buy is a figure that means something. The frozen
+//! table's result swings with how well covered it happens to be — 80% coverage
+//! scores 0.529, 66% scores 0.606 — so it measures the harness as much as the
+//! strategy. The resolver has no coverage at all to vary, and its two runs land
+//! within 0.014 of each other.
+//!
+//! The reading worth taking: the prober wins about 55% either way, so the
+//! strategy really is exploitable over a full battle, and *staleness is not why*.
+//! Both agents search with the same shallow horizon and the same leaf estimate,
+//! and that estimate is what they are both limited by — which points at the leaf,
+//! not at when the searching happens.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -39,6 +71,7 @@ use rand::RngCore;
 
 use crate::battle::engine::engine::{self, StepRequest, StepResult};
 use crate::battle::state::battle_state::BattleState;
+use crate::battle::state::Team;
 use crate::cfr::infoset::{sample as sample_action, Strategy};
 use crate::cfr::node::DecisionNode;
 use crate::cfr::resolve::ResolvingPolicy;
@@ -48,6 +81,75 @@ use crate::rl::encoder::encode;
 use crate::rl::mask::Mask;
 use crate::rl::moveslot::Moveslot;
 use crate::cfr::solver::PLAYOUT_CAP;
+
+/// A solver that searches afresh from whatever position it is shown.
+///
+/// This is what a person using a solver actually does, and it is stronger than a
+/// precomputed table in a way that matters here. A table is built once, so its
+/// horizon is fixed at the moment of building and the rest of the battle happens
+/// beyond it. A live resolver's horizon *moves with it*: standing on turn twelve
+/// and looking four turns ahead is a view of turns twelve to sixteen, which no
+/// table built at turn one ever had.
+///
+/// It also never meets a position it cannot answer, so unlike [`CfrAgent`] there
+/// is no random play to muddy the result.
+///
+/// The cost is a fresh search at every decision, which is why the policy caches.
+pub struct ResolvingAgent<'a, 'r> {
+	policy: &'a ResolvingPolicy<'r>,
+	/// Set by `observe` immediately before each `choose_move`.
+	pending: Option<(BattleState, StepRequest, Team)>,
+	fallbacks: Cell<u64>,
+	decisions: Cell<u64>,
+}
+
+impl<'a, 'r> ResolvingAgent<'a, 'r> {
+	pub fn new(policy: &'a ResolvingPolicy<'r>) -> Self {
+		ResolvingAgent {
+			policy,
+			pending: None,
+			fallbacks: Cell::new(0),
+			decisions: Cell::new(0),
+		}
+	}
+
+	/// Decisions made without a position to search from.
+	///
+	/// Should be zero. Anything else means `observe` was not called before
+	/// `choose_move`, and the agent was playing blind — which would quietly
+	/// understate it.
+	pub fn fallbacks(&self) -> u64 {
+		self.fallbacks.get()
+	}
+
+	pub fn decisions(&self) -> u64 {
+		self.decisions.get()
+	}
+}
+
+impl Agent for ResolvingAgent<'_, '_> {
+	fn observe(&mut self, state: &BattleState, request: &StepRequest, team: Team) {
+		self.pending = Some((state.clone(), request.clone(), team));
+	}
+
+	fn choose_move(&mut self, _representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
+		self.decisions.set(self.decisions.get() + 1);
+
+		let strategy = self
+			.pending
+			.as_ref()
+			.and_then(|(state, request, team)| self.policy.strategy(state, request, *team));
+
+		match strategy {
+			Some(strategy) => Moveslot::from_number(sample_action(&strategy, rng)),
+			None => {
+				self.fallbacks.set(self.fallbacks.get() + 1);
+				mask.get_random_valid(rng)
+					.expect("asked for a command with no legal action")
+			}
+		}
+	}
+}
 
 /// A solver's strategy, in a form the PPO machinery can play against.
 pub struct CfrAgent {
@@ -177,6 +279,83 @@ mod tests {
 
 	/// A precomputed position must be answered from the table, not at random —
 	/// otherwise the probe is measuring the lookup rather than the strategy.
+	/// Shown a position, the resolver searches it and plays a legal action — with
+	/// no blind decisions, which is the whole advantage over a lookup table.
+	#[test]
+	fn a_resolver_answers_from_the_position_it_was_shown() {
+		let registry = Registry::load();
+		let root = switch_prediction_2v2(&registry);
+		let mut rng = StdRng::seed_from_u64(8);
+
+		let policy = ResolvingPolicy::with_heuristic(
+			&registry, SolverConfig::for_lookahead(40, 3), 4);
+		let mut agent = ResolvingAgent::new(&policy);
+
+		let team = crate::battle::state::Team::Zero;
+		let mask = Mask::from_battle_state(
+			&team, crate::battle::state::field::PositionId(0), &root);
+		let view = encode(&root, &registry, false, &team);
+
+		agent.observe(&root, &StepRequest::NeedsActions, team);
+		let chosen = agent.choose_move(&view, &mask, &mut rng);
+
+		assert!(mask.allowed[chosen.to_number()], "must pick a legal action");
+		assert_eq!(agent.fallbacks(), 0, "it was shown the position; it should not play blind");
+		assert_eq!(agent.decisions(), 1);
+		assert_eq!(policy.solves(), 1);
+	}
+
+	/// If the hook is ever missed the agent is playing blind, which would flatter
+	/// it in a probe. That has to be counted rather than hidden.
+	#[test]
+	fn a_resolver_never_shown_a_position_counts_it() {
+		let registry = Registry::load();
+		let root = switch_prediction_2v2(&registry);
+		let mut rng = StdRng::seed_from_u64(9);
+
+		let policy = ResolvingPolicy::with_heuristic(
+			&registry, SolverConfig::for_lookahead(40, 3), 4);
+		let mut agent = ResolvingAgent::new(&policy);
+
+		let team = crate::battle::state::Team::Zero;
+		let mask = Mask::from_battle_state(
+			&team, crate::battle::state::field::PositionId(0), &root);
+		let view = encode(&root, &registry, false, &team);
+
+		let chosen = agent.choose_move(&view, &mask, &mut rng);
+
+		assert_eq!(agent.fallbacks(), 1);
+		assert!(mask.allowed[chosen.to_number()], "a blind decision still plays legally");
+	}
+
+	/// The playout loops must call `observe`, or a searching agent silently plays
+	/// at random inside every harness in the project.
+	#[test]
+	fn the_playout_loop_hands_the_position_over() {
+		use crate::rl::agent::random_agent::RandomAgent;
+		use crate::rl::battle_playout::play_headless_as;
+		let registry = Registry::load();
+		let root = switch_prediction_2v2(&registry);
+		let mut rng = StdRng::seed_from_u64(10);
+
+		let policy = ResolvingPolicy::with_heuristic(
+			&registry, SolverConfig::for_lookahead(30, 2), 6);
+		let mut agent = ResolvingAgent::new(&policy);
+		let mut opponent = RandomAgent {};
+
+		let (_, turns) = play_headless_as(
+			root, &registry, &mut agent, &mut opponent,
+			crate::battle::state::Team::Zero, &mut rng,
+		);
+
+		assert!(turns > 1);
+		assert!(agent.decisions() > 0, "the agent should have been asked something");
+		assert_eq!(
+			agent.fallbacks(), 0,
+			"every decision should have had a position behind it",
+		);
+	}
+
 	#[test]
 	fn a_precomputed_position_is_answered_from_the_table() {
 		let registry = Registry::load();

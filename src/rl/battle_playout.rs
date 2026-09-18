@@ -94,6 +94,10 @@ pub fn play_headless_as(
 					Team::One => (one_view, zero_view),
 				};
 
+				// Agents that think by searching need the position, not the encoding.
+				first.observe(&battle, &StepRequest::NeedsActions, first_team);
+				second.observe(&battle, &StepRequest::NeedsActions, second_team);
+
 				let actions = vec![
 					first.choose_move(&first_view, &first_mask, rng).to_command(first_pos, &battle, registry),
 					second.choose_move(&second_view, &second_mask, rng).to_command(second_pos, &battle, registry),
@@ -103,11 +107,13 @@ pub fn play_headless_as(
 			}
 			StepRequest::NeedsReplacements(positions) => {
 				let mut commands: Vec<Command> = Vec::new();
+				let pending = StepRequest::NeedsReplacements(positions.clone());
 				for pos in positions {
 					let team = pos.team();
 					let encoding = encoder::encode(&battle, registry, true, &team);
 					let mask = Mask::from_battle_state(&team, pos, &battle);
 					let actor: &mut dyn Agent = if team == first_team { first } else { second };
+					actor.observe(&battle, &pending, team);
 					commands.push(actor.choose_move(&encoding, &mask, rng).to_command(pos, &battle, registry));
 				}
 				StepResult { battle_state: battle, step_request } =
@@ -155,11 +161,13 @@ fn learner_team_replacements(agent: &mut impl LearningAgent, positions: &[Positi
  * Makes the opponent calculate... we don't need the probabilities because we aren't learning
  */
 fn opponent_team_replacements(agent: &mut dyn Agent, positions: &[PositionId], battle_state: &BattleState, registry: &Registry, rng: &mut dyn RngCore) -> Vec<Command> {
+	let pending = StepRequest::NeedsReplacements(positions.to_vec());
 	positions
 		.iter()
 		.map(|pos| {
 			let encoding = encoder::encode(battle_state, registry, true, &pos.team());
 			let mask = Mask::from_battle_state(&pos.team(), *pos, battle_state);
+			agent.observe(battle_state, &pending, pos.team());
 			agent.choose_move(&encoding, &mask, rng).to_command(*pos, battle_state, registry)
 		})
 		.collect()
@@ -226,6 +234,7 @@ pub fn play_out_battle_as(
 				if rng.random::<f32>() < EXPLORATION_CHANCE {
 					agent_moveslot = agent_mask.get_random_valid(rng).unwrap();
 				}
+				opponent.observe(&battle, &StepRequest::NeedsActions, opponent_team);
 				let opponent_moveslot = opponent.choose_move(&opponent_encoding, &opponent_mask, rng);
 
 				let actions = vec![
