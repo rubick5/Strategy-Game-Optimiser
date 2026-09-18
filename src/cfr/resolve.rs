@@ -147,6 +147,7 @@ impl<'r> ResolvingPolicy<'r> {
 				iterations: self.config.iterations,
 				max_depth: self.config.max_depth,
 				max_nodes: self.config.max_nodes,
+				transpositions: self.config.transpositions,
 			},
 			(self.leaf)(),
 		);

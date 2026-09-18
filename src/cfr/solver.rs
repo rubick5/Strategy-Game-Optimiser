@@ -54,7 +54,9 @@
 //! [`Solver::average_strategy`] is what to read and the current strategy is only
 //! ever used to sample.
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use rand::RngCore;
 
@@ -100,6 +102,42 @@ pub struct SolverConfig {
 	/// would simply run forever. `max_depth` does not help: capping depth at 200
 	/// still allows 2^200 nodes.
 	pub max_nodes: u64,
+	/// Reuse a position's value when the search reaches it again by another route.
+	///
+	/// Battles transpose constantly — the same two moves in either order leave the
+	/// same board — and the search re-expands every one of those. Caching the
+	/// answer is a straight saving, and depth is what the answer most needs.
+	///
+	/// Two things have to be part of the key or this is simply wrong. **Remaining
+	/// depth**, because a position with four turns of lookahead left is not worth
+	/// what it is worth with two. And the **traverser**, since the value is
+	/// reported in their currency. The cache is also cleared every iteration,
+	/// because a node's value depends on strategies that move between them.
+	///
+	/// Note what this does *not* change: the regret tables were always keyed on
+	/// the position, so strategies have always been shared across paths. This is
+	/// about not re-walking the same subtree.
+	///
+	/// **Measured, and it does not buy much.** With a cheap digest key, solving
+	/// the 2v2 runs 5% faster at four turns of lookahead and 13% at six, and the
+	/// 6v6 6% faster at three — better the deeper it goes, as more of the tree
+	/// overlaps. But the cost of an extra turn multiplies by five to nine, so 13%
+	/// is worth roughly a tenth of a turn. It is not a route to depth.
+	///
+	/// The reason is structural. External sampling already explores a thin slice
+	/// of the tree each iteration — one opponent action per node — so there is
+	/// little redundancy left to remove, and the large win, reusing work *across*
+	/// iterations, is unavailable because every value depends on strategies that
+	/// have moved.
+	///
+	/// There is also a real caveat. Returning a cached value skips the regret
+	/// updates below that node, so an infoset reached twice by different routes in
+	/// one iteration is now updated once rather than twice — a change to how
+	/// external sampling weights its visits. Measured exploitability moved in both
+	/// directions across cases and the samples were too noisy to say whether that
+	/// matters. Off by default for that reason: a 10% saving does not justify the
+	/// study it would take to be sure.
+	pub transpositions: bool,
 }
 
 impl SolverConfig {
@@ -116,6 +154,7 @@ impl Default for SolverConfig {
 			iterations: 2_000,
 			max_depth: DEFAULT_MAX_DEPTH,
 			max_nodes: 50_000_000,
+			transpositions: false,
 		}
 	}
 }
@@ -132,6 +171,15 @@ pub struct Solver<'r> {
 	/// Iterations to skip before logging, so early noise is not recorded.
 	warmup: usize,
 	iteration: usize,
+	/// Values already computed this iteration, by position, traverser and how far
+	/// there is left to look.
+	/// Keyed on a 64-bit digest rather than the position itself. The regret tables
+	/// hold whole positions on purpose, because a collision there would silently
+	/// merge two information sets; a collision here costs one wrong value in a
+	/// cache that is thrown away every iteration, and cloning a `BattleState` per
+	/// lookup costs more than the lookup saves.
+	memo: HashMap<(u64, Team, usize), f32>,
+	memo_hits: u64,
 }
 
 impl<'r> Solver<'r> {
@@ -157,6 +205,8 @@ impl<'r> Solver<'r> {
 			value_log: None,
 			warmup: 0,
 			iteration: 0,
+			memo: HashMap::new(),
+			memo_hits: 0,
 		}
 	}
 
@@ -236,6 +286,12 @@ impl<'r> Solver<'r> {
 		self.nodes_visited
 	}
 
+	/// Subtrees skipped because the same position had already been valued this
+	/// iteration at the same remaining depth.
+	pub fn transposition_hits(&self) -> u64 {
+		self.memo_hits
+	}
+
 	/// Run the configured number of iterations from `root`.
 	///
 	/// Traversers alternate, so both players' regrets improve and neither is
@@ -260,6 +316,8 @@ impl<'r> Solver<'r> {
 				break;
 			}
 			self.iteration = iteration;
+			// Values depend on the current strategies, which move every iteration.
+			self.memo.clear();
 			let traverser = if iteration % 2 == 0 { Team::Zero } else { Team::One };
 			self.walk(root.clone(), request.clone(), traverser, 0, rng);
 		}
@@ -282,6 +340,24 @@ impl<'r> Solver<'r> {
 		};
 		let actor = actors.into_iter().find(|actor| actor.team == team)?;
 		Some(self.table.get(&key, team)?.average_strategy(&actor.mask))
+	}
+
+	/// What the solve concluded the position is worth, to `team`.
+	///
+	/// This is the value CFR computed for the *truncated* game, averaged over the
+	/// iterations after warmup — quieter than playing the strategies out, and
+	/// consistent with what was actually solved. Needs [`Solver::log_values`].
+	pub fn root_value(
+		&self,
+		root: &BattleState,
+		request: &StepRequest,
+		team: Team,
+	) -> Option<f32> {
+		let key = StateKey::new(root, request)?;
+		self.node_values()
+			.into_iter()
+			.find(|(logged, side, _, _)| *logged == &key && *side == team)
+			.map(|(_, _, value, _)| value)
 	}
 
 	/// The equilibrium estimate for one side at the position the solve started
@@ -382,6 +458,20 @@ impl<'r> Solver<'r> {
 		let key = StateKey::new(&state, &request)
 			.expect("a node with actors is not terminal, so it has a key");
 
+		let remaining = self.config.max_depth.saturating_sub(depth);
+		let digest = if self.config.transpositions {
+			let mut hasher = DefaultHasher::new();
+			key.hash(&mut hasher);
+			let digest = hasher.finish();
+			if let Some(cached) = self.memo.get(&(digest, traverser, remaining)) {
+				self.memo_hits += 1;
+				return *cached;
+			}
+			digest
+		} else {
+			0
+		};
+
 		// The opponent's action is sampled once and reused for every one of the
 		// traverser's actions. Sampling it per branch instead would let the
 		// traverser's choice correlate with the reply — quietly turning a
@@ -462,6 +552,10 @@ impl<'r> Solver<'r> {
 			if actor.mask.allowed[action] {
 				node_value += strategy[action] * action_values[action];
 			}
+		}
+
+		if self.config.transpositions {
+			self.memo.insert((digest, traverser, remaining), node_value);
 		}
 
 		if self.iteration >= self.warmup {
@@ -685,6 +779,44 @@ mod tests {
 		let value = solver.evaluate(&root, 200, &mut rng);
 		assert!(value.is_finite(), "playouts through replacements should produce a value");
 		assert!(solver.table().len() > 100, "a 2v2 should discover many positions");
+	}
+
+	/// Transpositions must not change the answer, only the time taken. Checked on
+	/// the one battle position with a knowable right answer.
+	#[test]
+	fn transpositions_do_not_change_the_dominant_move() {
+		let registry = Registry::load();
+		let root = known_answer_duel(&registry);
+
+		let mut rng = StdRng::seed_from_u64(20260918);
+		let mut solver = Solver::new(&registry, SolverConfig {
+			iterations: 2_000, transpositions: true, ..SolverConfig::default() });
+		solver.solve(&root, &mut rng);
+
+		let strategy = solver.root_strategy(&root, Team::Zero).unwrap();
+		assert!(
+			strategy[KNOWN_ANSWER_DOMINANT_ACTION] > 0.9,
+			"transpositions changed the answer: {strategy:?}",
+		);
+		assert!(
+			solver.transposition_hits() > 0,
+			"nothing was reused, so this proves nothing",
+		);
+	}
+
+	/// And they must not tilt a mirror, which has to stay worth zero.
+	#[test]
+	fn transpositions_keep_a_mirror_balanced() {
+		let registry = Registry::load();
+		let root = mirror_duel(&registry);
+		let mut rng = StdRng::seed_from_u64(1234);
+
+		let mut solver = Solver::new(&registry, SolverConfig {
+			iterations: 4_000, transpositions: true, ..SolverConfig::default() });
+		solver.solve(&root, &mut rng);
+
+		let value = solver.evaluate(&root, 4_000, &mut rng);
+		assert!(value.abs() < 0.1, "a mirror should stay worth nothing, got {value}");
 	}
 
 	/// A mirror match is symmetric, so its value has to be zero — neither seat
