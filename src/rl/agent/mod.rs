@@ -6,6 +6,9 @@ pub mod ppo_agent;
 
 use std::{error::Error, f32::consts::E};
 
+use crate::battle::engine::engine::StepRequest;
+use crate::battle::state::battle_state::BattleState;
+use crate::battle::state::Team;
 use crate::rl::{agent::train_config::TrainConfig, battle_playout::PlayedBattle, mask::Mask, moveslot::Moveslot};
 use rand::{Rng as _, RngCore};
 
@@ -15,11 +18,25 @@ pub const EPS: f32 = 0.05;
 
 pub trait Agent {
 	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot;
+
+	/// The position the next `choose_move` will be about, before it is encoded.
+	///
+	/// A network needs only the encoding, which is why that is all `choose_move`
+	/// gets. A *search* needs the position itself — it cannot look ahead from a
+	/// vector of floats. Without this an agent that thinks by searching cannot be
+	/// played against the learners here at all.
+	///
+	/// Does nothing by default, so every existing agent is unaffected.
+	fn observe(&mut self, _state: &BattleState, _request: &StepRequest, _team: Team) {}
 }
 
 impl <A: Agent + ?Sized> Agent for Box<A> {
 	fn choose_move(&mut self, representation: &[f32], mask: &Mask, rng: &mut dyn RngCore) -> Moveslot {
 		(**self).choose_move(representation, mask, rng)
+	}
+
+	fn observe(&mut self, state: &BattleState, request: &StepRequest, team: Team) {
+		(**self).observe(state, request, team)
 	}
 }
 
