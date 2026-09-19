@@ -46,6 +46,8 @@ fn load(name: &str, registry: &Registry) -> Result<BattleState, Box<dyn Error>> 
 	Ok(match name {
 		"switch_prediction_2v2" => position::switch_prediction_2v2(registry),
 		"delayed_setup" => position::delayed_setup(registry),
+		"guard_probe" => position::guard_probe(registry),
+		"plain_probe" => position::plain_probe(registry),
 		"full_team_mirror" => position::full_team_mirror(registry),
 		"known_answer_duel" => position::known_answer_duel(registry),
 		"mirror_duel" => position::mirror_duel(registry),
