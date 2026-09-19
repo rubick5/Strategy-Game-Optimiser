@@ -44,6 +44,7 @@ use crate::battle::engine::engine::StepRequest;
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::field::Field;
 use crate::battle::state::Team;
+use crate::cfr::leaf::LeafSource;
 use crate::cfr::solver::{Solver, SolverConfig};
 use crate::model::registry::Registry;
 
@@ -104,10 +105,11 @@ fn value_of(
 	state: &BattleState,
 	depth: usize,
 	config: &HorizonConfig,
+	leaf: &LeafSource,
 	seed: u64,
 ) -> Option<(f32, u64)> {
 	let mut rng = StdRng::seed_from_u64(seed);
-	let mut solver = Solver::new(
+	let mut solver = Solver::with_leaf(
 		registry,
 		SolverConfig {
 			iterations: config.iterations,
@@ -115,6 +117,7 @@ fn value_of(
 			max_nodes: config.max_nodes,
 			..SolverConfig::default()
 		},
+		leaf.make(),
 	);
 	solver.log_values(0.5);
 	solver.solve(state, &mut rng);
@@ -149,6 +152,7 @@ pub fn compare_leads(
 	zero_b: usize,
 	one: usize,
 	config: &HorizonConfig,
+	leaf: &LeafSource,
 ) -> HorizonReport {
 	let name = |slot: usize, team: Team| {
 		root.get_mon_from_team(&team, slot)
@@ -166,8 +170,8 @@ pub fn compare_leads(
 			// The same seed for both leads: their difference is then the lead,
 			// not the sampler.
 			let seed = config.seed.wrapping_add(repeat as u64 * 1_000_003);
-			let a = value_of(registry, &with_leads(root, zero_a, one), *depth, config, seed);
-			let b = value_of(registry, &with_leads(root, zero_b, one), *depth, config, seed);
+			let a = value_of(registry, &with_leads(root, zero_a, one), *depth, config, leaf, seed);
+			let b = value_of(registry, &with_leads(root, zero_b, one), *depth, config, leaf, seed);
 
 			if let (Some((a, leaves_a)), Some((b, _))) = (a, b) {
 				values_a.push(a);
@@ -259,8 +263,9 @@ mod tests {
 		let state = with_leads(&root, 0, 0);
 		let config = HorizonConfig { iterations: 60, ..Default::default() };
 
-		let first = value_of(&registry, &state, 2, &config, 7).unwrap();
-		let second = value_of(&registry, &state, 2, &config, 7).unwrap();
+		let leaf = LeafSource::default();
+		let first = value_of(&registry, &state, 2, &config, &leaf, 7).unwrap();
+		let second = value_of(&registry, &state, 2, &config, &leaf, 7).unwrap();
 		assert_eq!(first.0, second.0, "the solve is not reproducible from its seed");
 	}
 
@@ -275,7 +280,7 @@ mod tests {
 			..Default::default()
 		};
 
-		let report = compare_leads(&registry, &root, 0, 1, 0, &config);
+		let report = compare_leads(&registry, &root, 0, 1, 0, &config, &LeafSource::default());
 		assert_eq!(report.rows.len(), 2);
 		for row in &report.rows {
 			assert!(row.spread.is_finite(), "three seeds should give a spread");

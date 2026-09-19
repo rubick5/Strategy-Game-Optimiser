@@ -17,7 +17,9 @@ use strat_optimizer::battle::engine::engine::StepRequest;
 use strat_optimizer::battle::state::battle_state::BattleState;
 use strat_optimizer::battle::state::{Team, TEAM_SIZE};
 use strat_optimizer::cfr::contraction::{self, ContractionConfig, SensitivityConfig};
+use strat_optimizer::cfr::critic::{self, TrainingConfig};
 use strat_optimizer::cfr::horizon::{self, HorizonConfig};
+use strat_optimizer::cfr::leaf::LeafSource;
 use strat_optimizer::cfr::matrix::MatrixGame;
 use strat_optimizer::cfr::node::DecisionNode;
 use strat_optimizer::cfr::position;
@@ -32,7 +34,9 @@ fn usage() -> String {
 		 deep leads <position> <lookahead> <iterations-per-matchup>\n  \
 		 deep contraction [walk] [truth-iters] [solve-iters] [noise]\n  \
 		 deep sensitivity <position> <iterations> [noise] [samples]\n  \
-		 deep horizon <position> <zero-a> <zero-b> <one> [iterations] [seeds]\n\n\
+		 deep horizon <position> <zero-a> <zero-b> <one> [iters] [seeds] [max-depth]\n  \
+		 deep train-critic <out-path> [rounds]\n\n\
+		 any solving command takes --leaf health | resource | critic:<path>\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
 		 switch_prediction_2v2 | full_team_mirror | known_answer_duel | mirror_duel",
 	)
@@ -48,13 +52,36 @@ fn load(name: &str, registry: &Registry) -> Result<BattleState, Box<dyn Error>> 
 	})
 }
 
+/// Pull `--leaf <spec>` out of the argument list wherever it appears.
+///
+/// Removed rather than read in place so that the positional arguments after it
+/// keep their numbering — otherwise adding the flag would silently shift every
+/// index a command reads and change what it solves.
+fn take_leaf(args: &mut Vec<String>) -> Result<LeafSource, Box<dyn Error>> {
+	let Some(at) = args.iter().position(|arg| arg == "--leaf") else {
+		return Ok(LeafSource::default());
+	};
+	if at + 1 >= args.len() {
+		return Err("--leaf needs a value: health | resource | critic:<path>".into());
+	}
+	let spec = args.remove(at + 1);
+	args.remove(at);
+	LeafSource::parse(&spec)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-	let args: Vec<String> = std::env::args().collect();
+	let mut args: Vec<String> = std::env::args().collect();
+	let leaf = take_leaf(&mut args)?;
+	let args = args;
+
+	if args.get(1).map(String::as_str) == Some("train-critic") && args.len() >= 3 {
+		return train_critic(&args);
+	}
 
 	// Takes no position: it builds its own, because the reference value has to be
 	// exact and only a 1v1 searched to the end gives one.
 	if args.get(1).map(String::as_str) == Some("contraction") {
-		contraction(&Registry::load(), &args);
+		contraction(&Registry::load(), &args, &leaf);
 		return Ok(());
 	}
 
@@ -62,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	if args.get(1).map(String::as_str) == Some("sensitivity") && args.len() >= 4 {
 		let registry = Registry::load();
 		let root = load(&args[2], &registry)?;
-		sensitivity(&registry, &root, &args);
+		sensitivity(&registry, &root, &args, &leaf);
 		return Ok(());
 	}
 
@@ -71,7 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	if args.get(1).map(String::as_str) == Some("horizon") && args.len() >= 6 {
 		let registry = Registry::load();
 		let root = load(&args[2], &registry)?;
-		horizon_sweep(&registry, &root, &args)?;
+		horizon_sweep(&registry, &root, &args, &leaf)?;
 		return Ok(());
 	}
 
@@ -98,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 /// How much of a leaf estimate's error does the search remove?
-fn contraction(registry: &Registry, args: &[String]) {
+fn contraction(registry: &Registry, args: &[String], leaf: &LeafSource) {
 	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
 	let config = ContractionConfig {
 		walk: number(2).unwrap_or(2),
@@ -110,6 +137,7 @@ fn contraction(registry: &Registry, args: &[String]) {
 	};
 
 	println!("=== contraction ===");
+	println!("  leaf under test: {}", leaf.label());
 	println!(
 		"  reference: 1v1 solved to the end, {} iterations",
 		config.truth_iterations,
@@ -120,13 +148,13 @@ fn contraction(registry: &Registry, args: &[String]) {
 	);
 
 	let start = Instant::now();
-	let report = contraction::measure(registry, &config);
+	let report = contraction::measure(registry, &config, leaf);
 	println!("\n{report}");
 	println!("\ntotal {:.1?}", start.elapsed());
 }
 
 /// Does the leaf estimate reach the root at a position that actually needs one?
-fn sensitivity(registry: &Registry, root: &BattleState, args: &[String]) {
+fn sensitivity(registry: &Registry, root: &BattleState, args: &[String], leaf: &LeafSource) {
 	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
 	let config = SensitivityConfig {
 		iterations: number(3).unwrap_or(1_500),
@@ -137,6 +165,7 @@ fn sensitivity(registry: &Registry, root: &BattleState, args: &[String]) {
 	};
 
 	println!("=== sensitivity: {} ===", args[2]);
+	println!("  leaf under test: {}", leaf.label());
 	describe(registry, root);
 	println!(
 		"  {} iterations per solve, {} perturbations of {:.2} at depths {:?}\n",
@@ -145,7 +174,7 @@ fn sensitivity(registry: &Registry, root: &BattleState, args: &[String]) {
 
 	let start = Instant::now();
 	let report =
-		contraction::sensitivity(registry, root, &StepRequest::NeedsActions, &config);
+		contraction::sensitivity(registry, root, &StepRequest::NeedsActions, &config, leaf);
 	println!("\n{report}");
 	println!("\ntotal {:.1?}", start.elapsed());
 }
@@ -155,18 +184,22 @@ fn horizon_sweep(
 	registry: &Registry,
 	root: &BattleState,
 	args: &[String],
+	leaf: &LeafSource,
 ) -> Result<(), Box<dyn Error>> {
 	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
 	let (zero_a, zero_b, one) = (args[3].parse()?, args[4].parse()?, args[5].parse()?);
 	let config = HorizonConfig {
 		iterations: number(6).unwrap_or(1_500),
 		seeds: number(7).unwrap_or(3),
-		depths: vec![2, 3, 4, 5, 6],
+		// Cost multiplies about fivefold per extra turn, so the last depth
+		// dominates the run and is worth being able to drop.
+		depths: (2..=number(8).unwrap_or(6)).collect(),
 		progress: true,
 		..HorizonConfig::default()
 	};
 
 	println!("=== horizon: {} ===", args[2]);
+	println!("  leaf under test: {}", leaf.label());
 	describe(registry, root);
 	println!(
 		"  team zero slot {zero_a} against slot {zero_b}, both versus team one slot {one}",
@@ -177,9 +210,48 @@ fn horizon_sweep(
 	);
 
 	let start = Instant::now();
-	let report = horizon::compare_leads(registry, root, zero_a, zero_b, one, &config);
+	let report = horizon::compare_leads(registry, root, zero_a, zero_b, one, &config, leaf);
 	println!("\n{report}");
 	println!("\ntotal {:.1?}", start.elapsed());
+	Ok(())
+}
+
+/// Train a critic and write it out, so the solving commands can load it.
+///
+/// Nothing else in the project produces one: `train` builds a critic in memory
+/// and the callers so far have used it and thrown it away. A leaf estimate that
+/// has to be retrained before every measurement cannot be compared against
+/// anything, so it gets saved.
+fn train_critic(args: &[String]) -> Result<(), Box<dyn Error>> {
+	let path = &args[2];
+	let rounds: usize = args.get(3).and_then(|arg| arg.parse().ok()).unwrap_or(4);
+
+	let registry = Registry::load();
+	let config = TrainingConfig { rounds, ..TrainingConfig::default() };
+	let curriculum = critic::default_curriculum(&registry);
+
+	println!("=== train-critic ===");
+	println!("  {} training positions, {rounds} rounds", curriculum.len());
+	println!("  each round re-solves with what has been learned so far\n");
+
+	let start = Instant::now();
+	let mut rng = StdRng::seed_from_u64(20260919);
+	let (critic, reports) = critic::train(&registry, &curriculum, &config, &mut rng);
+
+	for report in &reports {
+		println!(
+			"  round {}: {} positions, {} labels ({:.1} each), mse {:.5}",
+			report.round,
+			report.positions,
+			report.labels,
+			report.labels_per_position,
+			report.mean_squared_error,
+		);
+	}
+
+	critic.to_file(path)?;
+	println!("\nwrote {path} after {:.1?}", start.elapsed());
+	println!("use it with:  deep <command> ... --leaf critic:{path}");
 	Ok(())
 }
 
