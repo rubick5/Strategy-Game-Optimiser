@@ -224,6 +224,80 @@ pub fn switch_prediction_2v2(registry: &Registry) -> BattleState {
 	battle(vec![lead(), reserve()], vec![lead(), reserve()])
 }
 
+/// A position where setting up is right, and does not pay off for many turns.
+///
+/// Built to test one thing: can the solver find a move whose entire value lies
+/// beyond its horizon? *blade dance* deals no damage and costs the turn. A search
+/// that stops before the boost has been spent sees only the cost, so it declines
+/// it — which is exactly what the six-a-side lead matrix does, ranking a blade
+/// dance stonewarden below its guard set in every single column.
+///
+/// The trap in building such a position is letting the payoff arrive *too soon*.
+/// If setting up wins the very next turn then a two-turn search already sees it
+/// and the position tests nothing. So the reward is deliberately placed a long
+/// way after the investment, and the type chart is what places it:
+///
+/// | | iron press (Steel) | earth spike (Ground) |
+/// |---|---|---|
+/// | gustling | 0.5x | **0x**, via Levitate |
+/// | stonewarden | 2x | 2x |
+///
+/// and back the other way, gustling's *static jolt* is **0x** into brackenox's
+/// Ground typing while *dizzy ray* is a resisted 0.5x.
+///
+/// So the lead is a near-stalemate. brackenox cannot meaningfully hurt gustling —
+/// its Ground STAB does literally nothing and its Steel STAB is resisted — and
+/// gustling cannot meaningfully hurt it back. That is what makes spending a turn
+/// on the boost nearly free, and so correct. But the *reward* is not in that
+/// matchup at all: it is behind gustling, in a stonewarden that takes double from
+/// both of brackenox's attacks and is far too bulky to break unboosted. The chain
+/// is: spend a turn, grind through a creature that resists you, and only then
+/// collect.
+///
+/// Both sides keep a second creature so neither starts in a lost position, and
+/// both leads hold two moves rather than four to keep the action space small
+/// enough to search several turns deeper than usual.
+///
+/// **Measured**, 2500 iterations at each horizon:
+///
+/// | lookahead | blade dance | value |
+/// |---|---|---|
+/// | 2 | **0%** | +0.868 |
+/// | 3 | 99% | +0.904 |
+/// | 4 | 93% | +0.938 |
+/// | 5 | 100% | +0.955 |
+/// | 6-8 | 91-100% | +0.94 to +0.95 |
+///
+/// Two separate thresholds, and the gap between them is the useful finding. The
+/// **decision** is wrong at two turns and right from three: at the horizon this
+/// position was built to defeat, the solver plays the move that cannot pay off
+/// inside it and declines the one that can. But the **valuation** stays wrong
+/// well past that, converging only around five turns — at two turns the position
+/// is priced 0.087 below its settled value, and still 0.017 low at four.
+///
+/// That distinction is what reconciles this with the six-a-side lead matrix,
+/// where a blade dance stonewarden is ranked below its guard set in every column.
+/// A lead matrix is built out of *values*, not decisions, so it inherits the
+/// slower of the two convergences. The horizon sweep in [`crate::cfr::horizon`]
+/// agrees: that gap reads -0.032 at two turns and settles near -0.005.
+pub fn delayed_setup(registry: &Registry) -> BattleState {
+	battle(
+		vec![
+			// iron press, earth spike, blade dance
+			creature(registry, 7, &[16, 6, 26]),
+			// a real answer in reserve, so losing brackenox is not losing outright
+			creature(registry, 4, &[12, 15]),
+		],
+		vec![
+			// dizzy ray and static jolt: 0.5x and 0x into brackenox respectively
+			creature(registry, 6, &[19, 10]),
+			// the prize — doubly weak to both of brackenox's attacks, and bulky
+			// enough that reaching it unboosted is not enough
+			creature(registry, 3, &[5, 16]),
+		],
+	)
+}
+
 /// A full six-a-side mirror, for finding out what happens at scale.
 ///
 /// Both teams hold every creature in the roster with its designed moveset, so the
@@ -364,6 +438,7 @@ mod tests {
 	use super::*;
 	use crate::battle::state::field::PositionId;
 	use crate::battle::state::Team;
+	use crate::model::pmove::MoveId;
 	use crate::rl::mask::Mask;
 
 	/// The premise of the whole 1v1 approach: with an empty bench there is
@@ -485,6 +560,45 @@ mod tests {
 		assert!(state.outcome().is_none());
 	}
 
+	/// The premise of [`delayed_setup`] is a lead matchup neither side can win
+	/// quickly. If a moveset or the type chart ever changes so that one of them
+	/// can, the position silently stops testing delayed payoff and starts testing
+	/// nothing, while still looking fine. So the interactions it rests on are
+	/// asserted rather than left in a comment.
+	#[test]
+	fn the_setup_position_really_does_stall_in_the_lead() {
+		use crate::model::typing::effectiveness;
+		let registry = Registry::load();
+		let state = delayed_setup(&registry);
+
+		let typing = |position: PositionId| {
+			registry.get_species_data(state.get_mon(position).unwrap().species_id).typing.clone()
+		};
+		let element = |id: u32| registry.get_move(MoveId(id)).element;
+
+		// brackenox's Steel STAB is resisted by the lead it faces.
+		assert_eq!(effectiveness(element(16), &typing(PositionId(1))).as_f32(), 0.5);
+		// Its Ground STAB is answered by an ability rather than a typing, so the
+		// chart alone will not show the zero and the ability is asserted instead.
+		assert_eq!(
+			registry.get_species_data(state.get_mon(PositionId(1)).unwrap().species_id).ability,
+			Some(crate::model::ability::AbilityId::Levitate),
+			"without Levitate this is not a stalemate and earth spike simply wins",
+		);
+		// And the lead's Electric STAB does nothing back.
+		assert_eq!(effectiveness(element(10), &typing(PositionId(0))).as_f32(), 0.0);
+
+		// The reward waiting behind it takes double from both attacks.
+		let prize = registry
+			.get_species_data(state.get_mon_from_team(&Team::One, 1).unwrap().species_id)
+			.typing
+			.clone();
+		assert_eq!(effectiveness(element(16), &prize).as_f32(), 2.0);
+		assert_eq!(effectiveness(element(6), &prize).as_f32(), 2.0);
+
+		assert!(state.outcome().is_none());
+	}
+
 	#[test]
 	fn the_mirror_duel_is_a_genuine_mirror() {
 		let registry = Registry::load();
@@ -510,6 +624,15 @@ mod emit {
 		let registry = Registry::load();
 		switch_prediction_2v2(&registry)
 			.to_file("example_battles/switch_prediction_2v2.json")
+			.unwrap();
+	}
+
+	#[test]
+	#[ignore]
+	fn write_delayed_setup_json() {
+		let registry = Registry::load();
+		delayed_setup(&registry)
+			.to_file("example_battles/delayed_setup.json")
 			.unwrap();
 	}
 
