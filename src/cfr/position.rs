@@ -219,6 +219,95 @@ pub fn full_team_mirror(registry: &Registry) -> BattleState {
 	battle(team(), team())
 }
 
+/// A six-a-side that is *not* a mirror, for the team-preview question.
+///
+/// [`full_team_mirror`] answers "is the solve even-handed"; it cannot answer
+/// "which creature should I lead", because in a mirror the lead matrix is
+/// antisymmetric and both seats get the same answer by construction. This
+/// position exists to make the preview decision a real one, and the two
+/// constraints on it pull against each other:
+///
+/// * The teams have to differ, and there are only six real species, so no pair
+///   of six-a-side teams can be built from disjoint species. The difference has
+///   to come from *which* species are doubled and from what they are carrying.
+/// * The position has to stay roughly level. On a lost side every action is
+///   worth the same, so an unbalanced position has an arbitrary equilibrium and
+///   teaches the preview nothing.
+///
+/// **What the balance actually turns on.** Three arrangements were measured at
+/// `leads ... 2 200` before this one, and they say the constraint is narrower
+/// than it looks:
+///
+/// * The elemental trio (cinderfox, mireling, gustling) doubled against the
+///   ground trio (stonewarden, thornbeast, brackenox) — the only *fully*
+///   disjoint split the roster allows — gives +0.049 to the elements. The
+///   roster's cycle does not separate into two halves of three.
+/// * Under [`crate::cfr::leaf::HealthHeuristic`] at a short horizon, gustling's
+///   row beats every other lead in the mirror matrix and its column loses to
+///   none. It is a dominant lead: Levitate makes the Ground moves that should
+///   punish it do nothing, and *aqua pulse* covers the two Ground types its STAB
+///   cannot touch. Give one side a gustling with that moveset and not the other
+///   and the preview is decided before the battle starts.
+/// * Give *both* sides one and the position is level (+0.003 measured) but the
+///   answer is "both lead gustling" — balanced and useless, which is the failure
+///   mode this function is trying to avoid rather than a success.
+///
+/// So the design here is: **exactly one gustling, and it is not allowed universal
+/// coverage.** Team one's gustling carries *frost bolt* where the designed set
+/// has *aqua pulse*. Electric does nothing to either Ground type, and the swap
+/// takes Water's 4x on stonewarden and 2x on brackenox down to Ice's 2x and
+/// neutral — enough that both Grounds now trade with it rather than lose to it.
+/// Ice is kept rather than dropping the coverage entirely because an
+/// Electric-only gustling loses to the Grass lead instead (+0.026 to thornbeast,
+/// measured), which only moves the dominant lead somewhere else. That single
+/// restriction is what turns the ladder back into a cycle, and the cycle is what
+/// makes the preview answer a mixture.
+///
+/// **The two teams.** Team zero is the slow ground side: two stonewardens in
+/// different roles (the designed set with *guard*, and a *blade dance* sweeper
+/// set), brackenox, thornbeast, mireling and cinderfox on their designed sets.
+/// Team one is the fast offensive side: the restricted gustling, two mirelings
+/// (the designed defensive set, and an offensive one), two cinderfoxes (physical
+/// Guts, and a special *cinder blast* set that goes at thornbeast's weaker
+/// Special Defence), and thornbeast.
+///
+/// **Measured.** -0.012 to team zero at lookahead 2, holding at -0.014 with three
+/// times the iterations and -0.012 at lookahead 3, against a spread of about
+/// ±0.07 across the matrix — level enough that neither seat is playing a lost
+/// position. Both sides mix: team zero splits thornbeast with brackenox, team one
+/// splits gustling with the offensive mireling. Neither cinderfox is ever led,
+/// which is the honest result and not a defect: they are bench answers, and the
+/// preview only prices the first creature out.
+pub fn six_asymmetric(registry: &Registry) -> BattleState {
+	battle(
+		vec![
+			// stonewarden, designed set: sand up, stall behind guard.
+			creature(registry, 3, &[5, 6, 16, 25]),
+			// stonewarden again, as a sweeper rather than a wall: rock smash for
+			// flinch pressure and blade dance instead of the stall.
+			creature(registry, 3, &[5, 6, 20, 26]),
+			creature(registry, 7, &[16, 6, 5, 26]),
+			creature(registry, 5, &[14, 6, 20, 22]),
+			creature(registry, 4, &[12, 15, 9, 22]),
+			creature(registry, 2, &[3, 5, 13, 24]),
+		],
+		vec![
+			// gustling with frost bolt where the designed set has aqua pulse:
+			// still the answer to a Grass lead, no longer an answer to Ground.
+			creature(registry, 6, &[10, 15, 19, 24]),
+			creature(registry, 4, &[12, 15, 9, 22]),
+			// mireling turned offensive: the status and the seed traded for
+			// venom fang and dizzy ray.
+			creature(registry, 4, &[12, 15, 8, 19]),
+			creature(registry, 2, &[3, 5, 13, 24]),
+			// cinderfox off its Special Attack instead of its Attack: lower
+			// stat, but thornbeast's Special Defence is the weaker of its two.
+			creature(registry, 2, &[4, 7, 19, 21]),
+			creature(registry, 5, &[14, 6, 20, 22]),
+		],
+	)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -282,6 +371,50 @@ mod tests {
 		assert!(state.outcome().is_none());
 	}
 
+	/// The point of [`six_asymmetric`] is that it is *not* [`full_team_mirror`],
+	/// and the difference is easy to lose: the roster only has six species, so
+	/// two teams can look different in the source and still line up creature for
+	/// creature once they are laid out in team order. Assert the difference is
+	/// real rather than cosmetic, and that both sides are still alive to play —
+	/// a position one side has already lost prices every action the same and so
+	/// says nothing about which creature to lead.
+	#[test]
+	fn the_asymmetric_six_is_not_a_mirror() {
+		let registry = Registry::load();
+		let state = six_asymmetric(&registry);
+
+		let team = |team: Team| -> Vec<(u32, Vec<u32>)> {
+			(0..6)
+				.map(|index| {
+					let mon = state
+						.get_mon_from_team(&team, index)
+						.expect("six a side means six creatures");
+					assert!(mon.current_hp > 0, "{team:?} slot {index} starts fainted");
+					(mon.species_id.0, mon.moves.iter().map(|id| id.0).collect())
+				})
+				.collect()
+		};
+		let zero = team(Team::Zero);
+		let one = team(Team::One);
+
+		assert_ne!(zero, one, "the teams are the same, so this is a mirror");
+
+		// Order is not the difference: a reordered team is the same team, and
+		// pairing the leads differently is all `deep leads` does anyway.
+		let sorted = |mut members: Vec<(u32, Vec<u32>)>| {
+			members.sort();
+			members
+		};
+		assert_ne!(
+			sorted(zero),
+			sorted(one),
+			"the teams differ only in the order they are written down",
+		);
+
+		// Neither side is beaten before a move is played.
+		assert!(state.outcome().is_none());
+	}
+
 	#[test]
 	fn the_mirror_duel_is_a_genuine_mirror() {
 		let registry = Registry::load();
@@ -307,6 +440,21 @@ mod emit {
 		let registry = Registry::load();
 		switch_prediction_2v2(&registry)
 			.to_file("example_battles/switch_prediction_2v2.json")
+			.unwrap();
+	}
+
+	/// The two six-a-side team-preview positions, written out together because
+	/// they are read as a pair: the mirror says what a balanced lead matrix looks
+	/// like, and the other one is only interesting next to it.
+	#[test]
+	#[ignore]
+	fn write_six_a_side_json() {
+		let registry = Registry::load();
+		full_team_mirror(&registry)
+			.to_file("example_battles/six_mirror.json")
+			.unwrap();
+		six_asymmetric(&registry)
+			.to_file("example_battles/six_asymmetric.json")
 			.unwrap();
 	}
 }
