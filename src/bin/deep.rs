@@ -38,16 +38,18 @@ fn usage() -> String {
 		 deep train-critic <out-path> [rounds]\n\n\
 		 any solving command takes --leaf health | resource | critic:<path>\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
-		 switch_prediction_2v2 | full_team_mirror | known_answer_duel | mirror_duel",
+		 switch_prediction_2v2 | delayed_setup | setup_duel | full_team_mirror | ...",
 	)
 }
 
 fn load(name: &str, registry: &Registry) -> Result<BattleState, Box<dyn Error>> {
 	Ok(match name {
 		"switch_prediction_2v2" => position::switch_prediction_2v2(registry),
+		"delayed_setup" => position::delayed_setup(registry),
 		"full_team_mirror" => position::full_team_mirror(registry),
 		"known_answer_duel" => position::known_answer_duel(registry),
 		"mirror_duel" => position::mirror_duel(registry),
+		"setup_duel" => position::setup_duel(registry),
 		path => BattleState::from_file(path)?,
 	})
 }
