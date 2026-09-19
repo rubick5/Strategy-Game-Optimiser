@@ -263,6 +263,13 @@ pub fn full_team_mirror(registry: &Registry) -> BattleState {
 /// restriction is what turns the ladder back into a cycle, and the cycle is what
 /// makes the preview answer a mixture.
 ///
+/// Its fourth move changes too, and the reason is unrelated: *cinder blast*
+/// becomes *decoy*. A gustling holding both frost bolt and cinder blast still
+/// answers everything, just one type-chart step sideways, so the coverage cut
+/// above would not have bound. Note the cost — decoy is one of the two moves
+/// that can be played for free once a Substitute is up, so this lead can stall,
+/// and lines through it lean on the depth cap rather than ending.
+///
 /// **The two teams.** Team zero is the slow ground side: two stonewardens in
 /// different roles (the designed set with *guard*, and a *blade dance* sweeper
 /// set), brackenox, thornbeast, mireling and cinderfox on their designed sets.
@@ -272,12 +279,23 @@ pub fn full_team_mirror(registry: &Registry) -> BattleState {
 /// Special Defence), and thornbeast.
 ///
 /// **Measured.** -0.012 to team zero at lookahead 2, holding at -0.014 with three
-/// times the iterations and -0.012 at lookahead 3, against a spread of about
-/// ±0.07 across the matrix — level enough that neither seat is playing a lost
-/// position. Both sides mix: team zero splits thornbeast with brackenox, team one
-/// splits gustling with the offensive mireling. Neither cinderfox is ever led,
-/// which is the honest result and not a defect: they are bench answers, and the
-/// preview only prices the first creature out.
+/// times the iterations, -0.012 at lookahead 3 and -0.0119 at lookahead 4 —
+/// against a spread of about ±0.07 across the matrix, so neither seat is playing
+/// a lost position, and stable enough across four horizons to say the answer does
+/// not depend on where the search stops.
+///
+/// The full lookahead-4 answer, 4000 iterations a matchup, 30 minutes: team zero
+/// leads brackenox 49%, thornbeast 43%, cinderfox 8%; team one leads gustling
+/// 59%, thornbeast 39%, the offensive mireling 2%. Both supports satisfy the
+/// indifference condition to within 0.0002 while every excluded lead is clearly
+/// worse, which is what an equilibrium is and is checkable by hand from the
+/// printed matrix.
+///
+/// Neither stonewarden is ever led, and the two of them differ by a mean of only
+/// 0.0028 across the whole matrix despite sharing just half a moveset — with the
+/// *blade dance* set the worse of the two in every single column. That is the
+/// shape a horizon effect makes: four turns is long enough to see the stat boost
+/// and too short to see the sweep it buys, so setup is priced at its cost.
 pub fn six_asymmetric(registry: &Registry) -> BattleState {
 	battle(
 		vec![
