@@ -112,6 +112,39 @@ pub fn mirror_duel(registry: &Registry) -> BattleState {
 	)
 }
 
+/// A 1v1 whose whole question is whether setting up is worth the turn.
+///
+/// This exists because of a gap found in [`crate::cfr::critic::default_curriculum`]:
+/// not one of its three positions contains a stat-boosting move, so every
+/// stat-stage input to the encoder is zero in every training sample the critic
+/// ever sees. Those weights get no gradient, and a critic trained on that
+/// curriculum cannot have learned what a boost is worth — it would fail a test of
+/// setup pricing for want of ever having been shown one, which says nothing about
+/// whether a network could learn it.
+///
+/// brackenox holds *iron press* and *blade dance*. Blade dance deals no damage
+/// and costs the turn, returning a doubled Attack to spend over the turns that
+/// follow: exactly the trade a short horizon misprices, and the reason the
+/// six-a-side lead matrix ranks a blade dance stonewarden below its guard set in
+/// every single column.
+///
+/// thornbeast answers with *thorn whip* and *earth spike*, Ground being 2x back
+/// onto brackenox's Steel, so setting up in front of it is a real gamble rather
+/// than a free turn — which is what makes the position worth labelling.
+///
+/// It terminates on its own, like the other duels here: blade dance restores no
+/// health and cannot be played for free, since the opponent keeps attacking
+/// through it. So this is an *exactly* solvable position, and its labels carry no
+/// debt to any leaf estimate.
+pub fn setup_duel(registry: &Registry) -> BattleState {
+	duel(
+		// iron press, blade dance
+		creature(registry, 7, &[16, 26]),
+		// thorn whip, earth spike
+		creature(registry, 5, &[14, 6]),
+	)
+}
+
 /// Field layout for a 2v2: both teams lead with their first creature.
 const TWO_V_TWO_FIELD: [usize; 2] = [0, 1];
 
@@ -360,6 +393,25 @@ mod tests {
 		let registry = Registry::load();
 		assert!(known_answer_duel(&registry).outcome().is_none());
 		assert!(mirror_duel(&registry).outcome().is_none());
+		assert!(setup_duel(&registry).outcome().is_none());
+	}
+
+	/// The point of [`setup_duel`] is that a boost can actually appear in it. If
+	/// the boosting move is ever dropped from the set this silently stops being a
+	/// training position about setup and becomes another plain duel.
+	#[test]
+	fn the_setup_duel_contains_a_boosting_move() {
+		let registry = Registry::load();
+		let state = setup_duel(&registry);
+		let mon = state.get_mon(PositionId(0)).unwrap();
+
+		const BLADE_DANCE: u32 = 26;
+		assert!(
+			mon.moves.iter().any(|id| id.0 == BLADE_DANCE),
+			"no boosting move, so this teaches nothing about setup: {:?}",
+			mon.moves,
+		);
+		assert_eq!(mon.stat_changes, crate::battle::state::stat_stages::StatStages::new());
 	}
 
 	/// Six a side, so nine legal actions rather than three — the number that makes

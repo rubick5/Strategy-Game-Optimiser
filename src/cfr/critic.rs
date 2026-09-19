@@ -136,7 +136,7 @@ use crate::cfr::infoset::{sample as sample_action, InfosetData};
 use crate::cfr::key::{NodeKind, StateKey};
 use crate::cfr::leaf::{HealthHeuristic, LeafEvaluator};
 use crate::cfr::node::DecisionNode;
-use crate::cfr::position::{known_answer_duel, mirror_duel, switch_prediction_2v2};
+use crate::cfr::position::{known_answer_duel, mirror_duel, setup_duel, switch_prediction_2v2};
 use crate::cfr::solver::{Solver, SolverConfig, PLAYOUT_CAP};
 use crate::model::registry::Registry;
 use crate::rl::encoder::{encode_both, TOTAL_ENCODING_LEN};
@@ -667,10 +667,14 @@ pub fn default_curriculum(registry: &Registry) -> Vec<TrainingPosition> {
 			state: mirror_duel(registry),
 			lookahead: 200,
 		},
+		// Without this one, every stat-stage input to the encoder is zero in
+		// every sample, those weights never receive a gradient, and the critic
+		// cannot have learned what a boost is worth. That is the single thing a
+		// leaf estimate most needs to know that the health heuristic cannot see.
 		TrainingPosition {
-			name: String::from("switch prediction (2v2, horizon-limited)"),
-			state: switch_prediction_2v2(registry),
-			lookahead: 6,
+			name: String::from("setup duel (1v1, exact, contains blade dance)"),
+			state: setup_duel(registry),
+			lookahead: 200,
 		},
 	]
 }

@@ -57,7 +57,7 @@ use crate::battle::engine::engine::{self, StepRequest, StepResult};
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::creature_state::CreatureState;
 use crate::battle::state::Team;
-use crate::cfr::leaf::{HealthHeuristic, LeafEvaluator};
+use crate::cfr::leaf::{HealthHeuristic, LeafEvaluator, LeafSource};
 use crate::cfr::node::DecisionNode;
 use crate::cfr::solver::{Solver, SolverConfig};
 use crate::model::pmove::MoveId;
@@ -311,7 +311,11 @@ struct Solved {
 
 /// Run the whole measurement. Slow — one exact solve plus `4 * depths` limited
 /// solves per position.
-pub fn measure(registry: &Registry, config: &ContractionConfig) -> ContractionReport {
+pub fn measure(
+	registry: &Registry,
+	config: &ContractionConfig,
+	leaf: &LeafSource,
+) -> ContractionReport {
 	let positions = sample_positions(registry, config);
 	if config.progress {
 		println!(
@@ -359,13 +363,13 @@ pub fn measure(registry: &Registry, config: &ContractionConfig) -> ContractionRe
 		};
 
 		let perturbed = || -> Box<dyn LeafEvaluator> {
-			Box::new(Perturbed::new(Box::new(HealthHeuristic), config.noise, seed))
+			Box::new(Perturbed::new(leaf.make(), config.noise, seed))
 		};
 
+		let estimate = leaf.make().value(state, Team::Zero, registry);
 		truths.push(truth);
-		leaf_errors.push(HealthHeuristic.value(state, Team::Zero, registry) - truth);
-		noise.push(perturbed().value(state, Team::Zero, registry)
-			- HealthHeuristic.value(state, Team::Zero, registry));
+		leaf_errors.push(estimate - truth);
+		noise.push(perturbed().value(state, Team::Zero, registry) - estimate);
 
 		for (slot, depth) in config.depths.iter().enumerate() {
 			// Common random numbers: the baseline and the perturbed run share a
@@ -373,7 +377,7 @@ pub fn measure(registry: &Registry, config: &ContractionConfig) -> ContractionRe
 			let budget = config.truth_max_nodes;
 			let base = solve_value(
 				registry, state, request, *depth, config.solve_iterations, budget,
-				Box::new(HealthHeuristic), seed,
+				leaf.make(), seed,
 			);
 			let bumped = solve_value(
 				registry, state, request, *depth, config.solve_iterations, budget,
@@ -383,7 +387,7 @@ pub fn measure(registry: &Registry, config: &ContractionConfig) -> ContractionRe
 			// for no reason at all.
 			let reseed = solve_value(
 				registry, state, request, *depth, config.solve_iterations, budget,
-				Box::new(HealthHeuristic), seed ^ 0xDEAD_BEEF,
+				leaf.make(), seed ^ 0xDEAD_BEEF,
 			);
 
 			if let Some(base) = base {
@@ -560,13 +564,15 @@ fn applied_perturbation(
 	registry: &Registry,
 	root: &BattleState,
 	config: &SensitivityConfig,
+	leaf: &LeafSource,
 ) -> f32 {
 	let horizon = config.depths.iter().copied().max().unwrap_or(4);
 	let mut offsets = Vec::new();
 
 	for sample in 0..config.samples {
 		let salt = config.seed.wrapping_add(sample as u64 * 7_919);
-		let leaf = Perturbed::new(Box::new(HealthHeuristic), config.noise, salt);
+		let bumped = Perturbed::new(leaf.make(), config.noise, salt);
+		let plain = leaf.make();
 
 		for walk in 0..24u64 {
 			let mut rng = StdRng::seed_from_u64(salt ^ walk.wrapping_mul(2_654_435_761));
@@ -592,8 +598,8 @@ fn applied_perturbation(
 			}
 
 			offsets.push(
-				leaf.value(&state, Team::Zero, registry)
-					- HealthHeuristic.value(&state, Team::Zero, registry),
+				bumped.value(&state, Team::Zero, registry)
+					- plain.value(&state, Team::Zero, registry),
 			);
 		}
 	}
@@ -606,8 +612,9 @@ pub fn sensitivity(
 	root: &BattleState,
 	request: &StepRequest,
 	config: &SensitivityConfig,
+	leaf: &LeafSource,
 ) -> SensitivityReport {
-	let noise_rms = applied_perturbation(registry, root, config);
+	let noise_rms = applied_perturbation(registry, root, config, leaf);
 	let mut rows = Vec::new();
 	let started = std::time::Instant::now();
 	if config.progress {
@@ -617,7 +624,7 @@ pub fn sensitivity(
 	for depth in &config.depths {
 		let Some(base) = solve_value(
 			registry, root, request, *depth, config.iterations,
-			SolverConfig::default().max_nodes, Box::new(HealthHeuristic), config.seed,
+			SolverConfig::default().max_nodes, leaf.make(), config.seed,
 		) else {
 			continue;
 		};
@@ -626,19 +633,19 @@ pub fn sensitivity(
 		let mut floor = Vec::new();
 		for sample in 0..config.samples {
 			let salt = config.seed.wrapping_add(sample as u64 * 7_919);
-			let leaf = Perturbed::new(Box::new(HealthHeuristic), config.noise, salt);
+			let bumped_leaf = Perturbed::new(leaf.make(), config.noise, salt);
 
 			// Same solver seed as the baseline, so the difference is the leaf.
 			if let Some(bumped) = solve_value(
 				registry, root, request, *depth, config.iterations,
-				SolverConfig::default().max_nodes, Box::new(leaf), config.seed,
+				SolverConfig::default().max_nodes, Box::new(bumped_leaf), config.seed,
 			) {
 				moved.push(bumped.value - base.value);
 			}
 			// Same leaf, different solver seed: the floor this has to clear.
 			if let Some(reseed) = solve_value(
 				registry, root, request, *depth, config.iterations,
-				SolverConfig::default().max_nodes, Box::new(HealthHeuristic),
+				SolverConfig::default().max_nodes, leaf.make(),
 				salt ^ 0xDEAD_BEEF,
 			) {
 				floor.push(reseed.value - base.value);
@@ -812,6 +819,7 @@ mod tests {
 				walk: 1,
 				..Default::default()
 			},
+			&LeafSource::default(),
 		);
 
 		assert!(report.positions > 20, "too few positions survived: {}", report.positions);
