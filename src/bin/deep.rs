@@ -17,6 +17,7 @@ use strat_optimizer::battle::engine::engine::StepRequest;
 use strat_optimizer::battle::state::battle_state::BattleState;
 use strat_optimizer::battle::state::{Team, TEAM_SIZE};
 use strat_optimizer::cfr::contraction::{self, ContractionConfig, SensitivityConfig};
+use strat_optimizer::cfr::horizon::{self, HorizonConfig};
 use strat_optimizer::cfr::matrix::MatrixGame;
 use strat_optimizer::cfr::node::DecisionNode;
 use strat_optimizer::cfr::position;
@@ -30,7 +31,8 @@ fn usage() -> String {
 		 deep solve <position> <lookahead> <iterations> [report-every]\n  \
 		 deep leads <position> <lookahead> <iterations-per-matchup>\n  \
 		 deep contraction [walk] [truth-iters] [solve-iters] [noise]\n  \
-		 deep sensitivity <position> <iterations> [noise] [samples]\n\n\
+		 deep sensitivity <position> <iterations> [noise] [samples]\n  \
+		 deep horizon <position> <zero-a> <zero-b> <one> [iterations] [seeds]\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
 		 switch_prediction_2v2 | full_team_mirror | known_answer_duel | mirror_duel",
 	)
@@ -61,6 +63,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let registry = Registry::load();
 		let root = load(&args[2], &registry)?;
 		sensitivity(&registry, &root, &args);
+		return Ok(());
+	}
+
+	// Compares two of team zero's leads across a sweep of horizons, so it takes
+	// three slot numbers rather than a single lookahead.
+	if args.get(1).map(String::as_str) == Some("horizon") && args.len() >= 6 {
+		let registry = Registry::load();
+		let root = load(&args[2], &registry)?;
+		horizon_sweep(&registry, &root, &args)?;
 		return Ok(());
 	}
 
@@ -137,6 +148,39 @@ fn sensitivity(registry: &Registry, root: &BattleState, args: &[String]) {
 		contraction::sensitivity(registry, root, &StepRequest::NeedsActions, &config);
 	println!("\n{report}");
 	println!("\ntotal {:.1?}", start.elapsed());
+}
+
+/// Is a lead underpriced because the search stops too early?
+fn horizon_sweep(
+	registry: &Registry,
+	root: &BattleState,
+	args: &[String],
+) -> Result<(), Box<dyn Error>> {
+	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
+	let (zero_a, zero_b, one) = (args[3].parse()?, args[4].parse()?, args[5].parse()?);
+	let config = HorizonConfig {
+		iterations: number(6).unwrap_or(1_500),
+		seeds: number(7).unwrap_or(3),
+		depths: vec![2, 3, 4, 5, 6],
+		progress: true,
+		..HorizonConfig::default()
+	};
+
+	println!("=== horizon: {} ===", args[2]);
+	describe(registry, root);
+	println!(
+		"  team zero slot {zero_a} against slot {zero_b}, both versus team one slot {one}",
+	);
+	println!(
+		"  {} iterations, {} paired seeds, depths {:?}\n",
+		config.iterations, config.seeds, config.depths,
+	);
+
+	let start = Instant::now();
+	let report = horizon::compare_leads(registry, root, zero_a, zero_b, one, &config);
+	println!("\n{report}");
+	println!("\ntotal {:.1?}", start.elapsed());
+	Ok(())
 }
 
 /// Describe the position, so a pasted log is self-contained.

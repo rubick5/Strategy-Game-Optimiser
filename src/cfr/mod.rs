@@ -34,6 +34,7 @@
 pub mod contraction;
 pub mod critic;
 pub mod exploit;
+pub mod horizon;
 pub mod infoset;
 pub mod key;
 pub mod leaf;
