@@ -16,7 +16,11 @@
 //! This is also why the 1v1 work was done first — there, a wrong answer could
 //! only come from the CFR itself, with no leaf estimate to share the blame.
 
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use crate::battle::state::battle_state::BattleState;
@@ -242,11 +246,110 @@ impl LeafEvaluator for Indifferent {
 	}
 }
 
+/// Remembers what an expensive estimate said about a position.
+///
+/// A leaf estimate is a **pure function of the position**, so a value once
+/// computed is valid forever. That is what makes this safe, and it is worth
+/// setting against the memo inside [`crate::cfr::solver::Solver`], which caches
+/// node values and has to be cleared every iteration because those depend on
+/// strategies that move. Nothing here moves.
+///
+/// It exists because the critic is about a hundred times more expensive per call
+/// than the health heuristic — a network forward pass against a sum over health
+/// bars — and the search asks the same questions over and over. Measured on
+/// `six_asymmetric`, one depth-five solve reaches the horizon seventy million
+/// times; at that scale a run that takes fifty minutes with the heuristic takes
+/// over three days with a critic, which is not a leaf anyone can test.
+///
+/// Battles transpose constantly, so repeats are the common case rather than a
+/// lucky one: the same two moves in either order leave the same board.
+///
+/// **Collisions are not tolerated.** The key is a digest, so a lookup does not
+/// have to clone the position, but the position itself is stored beside the
+/// value and compared on every hit. A digest collision costs a recomputation
+/// rather than silently returning another position's score.
+///
+/// The cache is dropped wholesale when it reaches `capacity`, rather than evicted
+/// one entry at a time. A leaf has no natural notion of which entries are worth
+/// keeping, and the alternative — tracking recency — costs more per lookup than
+/// the health heuristic costs to just run.
+pub struct Memoised {
+	inner: Box<dyn LeafEvaluator>,
+	cache: RefCell<HashMap<(u64, Team), (BattleState, f32)>>,
+	capacity: usize,
+	hits: Cell<u64>,
+	misses: Cell<u64>,
+}
+
+impl Memoised {
+	pub fn new(inner: Box<dyn LeafEvaluator>, capacity: usize) -> Self {
+		Memoised {
+			inner,
+			cache: RefCell::new(HashMap::new()),
+			capacity: capacity.max(1),
+			hits: Cell::new(0),
+			misses: Cell::new(0),
+		}
+	}
+
+	pub fn hits(&self) -> u64 {
+		self.hits.get()
+	}
+
+	pub fn misses(&self) -> u64 {
+		self.misses.get()
+	}
+
+	/// Share of lookups answered from the cache.
+	pub fn hit_rate(&self) -> f32 {
+		let total = self.hits.get() + self.misses.get();
+		if total == 0 { 0.0 } else { self.hits.get() as f32 / total as f32 }
+	}
+
+	fn digest(state: &BattleState) -> u64 {
+		let mut hasher = DefaultHasher::new();
+		state.hash(&mut hasher);
+		hasher.finish()
+	}
+}
+
+impl LeafEvaluator for Memoised {
+	fn value(&self, state: &BattleState, team: Team, registry: &Registry) -> f32 {
+		let key = (Self::digest(state), team);
+
+		// Compare the stored position, not just its digest: a collision must cost
+		// a recomputation, never a wrong answer.
+		if let Some((stored, value)) = self.cache.borrow().get(&key) {
+			if stored == state {
+				self.hits.set(self.hits.get() + 1);
+				return *value;
+			}
+		}
+
+		let value = self.inner.value(state, team, registry);
+		self.misses.set(self.misses.get() + 1);
+
+		let mut cache = self.cache.borrow_mut();
+		if cache.len() >= self.capacity {
+			cache.clear();
+		}
+		cache.insert(key, (state.clone(), value));
+		value
+	}
+}
+
 /// Which leaf estimate to solve with, chosen at the command line.
 ///
 /// Built once and handed out behind an [`Rc`], because a `Solver` owns its
 /// evaluator and the diagnostics build hundreds of solvers — re-reading a
 /// critic's weights from disk for each one would dominate the run.
+/// Positions a critic's cache holds before it is dropped and rebuilt.
+///
+/// Each entry keeps a whole `BattleState`, so this trades memory for the hundred
+/// -fold saving on evaluation. Two million six-a-side positions is on the order
+/// of a gigabyte, which is affordable where three days of compute is not.
+const CRITIC_CACHE: usize = 2_000_000;
+
 pub struct LeafSource {
 	inner: Rc<dyn LeafEvaluator>,
 	label: String,
@@ -270,7 +373,14 @@ impl LeafSource {
 					// a run meaning to test the network would quietly test the
 					// heuristic instead.
 					critic.trust = 1.0;
-					(Rc::new(critic), format!("critic from {path}, trust 1.0"))
+					// Memoised, and the heuristics deliberately are not: caching
+					// costs a hash and a comparison, which is more than the health
+					// heuristic costs to simply run. It only pays for an estimate
+					// far more expensive than the bookkeeping around it.
+					(
+						Rc::new(Memoised::new(Box::new(critic), CRITIC_CACHE)),
+						format!("critic from {path}, trust 1.0, memoised"),
+					)
 				}
 				None => {
 					return Err(format!(
@@ -486,6 +596,101 @@ mod tests {
 
 		let value = ResourceHeuristic::default().value(&state, Team::Zero, &registry);
 		assert!((value - 1.0).abs() < 1e-6, "expected a win, got {value}");
+	}
+
+	// --- Memoised ---------------------------------------------------------
+
+	/// A cache that changes any answer is a bug that looks like a result. Every
+	/// number this project has measured with a memoised critic rests on this.
+	#[test]
+	fn memoising_never_changes_an_answer() {
+		let registry = Registry::load();
+		let memo = Memoised::new(Box::new(ResourceHeuristic::default()), 1_000);
+		let plain = ResourceHeuristic::default();
+
+		let mut state = known_answer_duel(&registry);
+		for step in 0..30u32 {
+			// Walk the position somewhere new each time, then ask twice.
+			let mon = state.get_mut_mon(PositionId(0)).unwrap();
+			mon.current_hp = mon.max_hp - step * 3;
+
+			for team in [Team::Zero, Team::One] {
+				let expected = plain.value(&state, team, &registry);
+				assert_eq!(expected, memo.value(&state, team, &registry), "first call");
+				assert_eq!(expected, memo.value(&state, team, &registry), "cached call");
+			}
+		}
+		assert!(memo.hits() > 0, "nothing was ever served from the cache");
+	}
+
+	#[test]
+	fn asking_the_same_question_twice_costs_one_evaluation() {
+		let registry = Registry::load();
+		let memo = Memoised::new(Box::new(HealthHeuristic), 1_000);
+		let state = known_answer_duel(&registry);
+
+		for _ in 0..10 {
+			memo.value(&state, Team::Zero, &registry);
+		}
+		assert_eq!(memo.misses(), 1, "the position was recomputed");
+		assert_eq!(memo.hits(), 9);
+	}
+
+	/// Each side's value is its own entry. Serving Team One's question from Team
+	/// Zero's answer would flip the sign of every estimate below the horizon.
+	#[test]
+	fn the_two_sides_are_cached_separately() {
+		let registry = Registry::load();
+		let memo = Memoised::new(Box::new(HealthHeuristic), 1_000);
+		let mut state = known_answer_duel(&registry);
+		state.get_mut_mon(PositionId(1)).unwrap().current_hp /= 2;
+
+		let zero = memo.value(&state, Team::Zero, &registry);
+		let one = memo.value(&state, Team::One, &registry);
+		assert!((zero + one).abs() < 1e-6, "{zero} and {one} should cancel");
+		assert!(zero > 0.0);
+	}
+
+	/// Distinct positions must not share an answer. Walking one creature's health
+	/// down gives a run of positions that differ by very little, which is where a
+	/// key that is too coarse would show up.
+	#[test]
+	fn positions_that_differ_get_different_answers() {
+		let registry = Registry::load();
+		let memo = Memoised::new(Box::new(HealthHeuristic), 1_000);
+		let mut seen = Vec::new();
+
+		let mut state = known_answer_duel(&registry);
+		for step in 1..20u32 {
+			state.get_mut_mon(PositionId(0)).unwrap().current_hp =
+				state.get_mon(PositionId(0)).unwrap().max_hp - step;
+			seen.push(memo.value(&state, Team::Zero, &registry));
+		}
+
+		for window in seen.windows(2) {
+			assert!(window[0] > window[1], "losing health did not lower the estimate");
+		}
+		assert_eq!(memo.misses(), 19, "distinct positions were served from cache");
+	}
+
+	/// The cache is bounded, and staying correct across the drop matters more
+	/// than the drop being clever.
+	#[test]
+	fn the_cache_stays_bounded_and_correct_when_it_is_dropped() {
+		let registry = Registry::load();
+		let memo = Memoised::new(Box::new(HealthHeuristic), 8);
+		let plain = HealthHeuristic;
+
+		let mut state = known_answer_duel(&registry);
+		for step in 1..60u32 {
+			state.get_mut_mon(PositionId(0)).unwrap().current_hp =
+				state.get_mon(PositionId(0)).unwrap().max_hp - step;
+			assert_eq!(
+				plain.value(&state, Team::Zero, &registry),
+				memo.value(&state, Team::Zero, &registry),
+			);
+		}
+		assert!(memo.cache.borrow().len() <= 8, "the cache outgrew its capacity");
 	}
 
 	#[test]

@@ -35,6 +35,8 @@
 
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::creature_state::CreatureState;
+use crate::battle::state::roster::RosterId;
+use crate::battle::state::Team;
 use crate::model::pmove::MoveId;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::SpeciesId;
@@ -222,6 +224,74 @@ pub fn switch_prediction_2v2(registry: &Registry) -> BattleState {
 	let reserve = || creature(registry, 5, &[14, 6]);
 
 	battle(vec![lead(), reserve()], vec![lead(), reserve()])
+}
+
+/// [`six_asymmetric`] with team zero's two leads differing *only* in whether one
+/// of them holds *guard*.
+///
+/// This exists to settle which of two creatures the six-a-side horizon sweep was
+/// actually mispricing. That sweep compared a stonewarden carrying *iron press*
+/// and *guard* against one carrying *rock smash* and *blade dance*, found the
+/// second worse by 0.032 at two turns of lookahead and by only 0.005 at five,
+/// and the obvious reading was that the search underprices setup.
+///
+/// The individual values say otherwise. Across depths two to five the blade
+/// dance set moves by 0.008 while the *guard* set falls by 0.038 — nearly five
+/// times as far. It is the guard set whose value is collapsing, not the dance
+/// set's that is climbing. Which points at Protect rather than at blade dance,
+/// and for a reason that fits: Protect blocks everything for a turn at no visible
+/// cost, and a search that stops immediately afterwards never pays for it. It
+/// does not see the free turn the opponent gets, nor `protect_success_chance`
+/// decaying on repeated use.
+///
+/// The two-set comparison cannot separate those, because the sets differ in two
+/// moves at once. Here they differ in exactly one. Both leads are the designed
+/// stonewarden; the second has *guard* replaced by *mud wave*, which is plain —
+/// no rider, no tempo effect of its own — and redundant with the Ground STAB
+/// already in the set, so it is close to an empty slot. That is deliberate: the
+/// question is not whether the replacement is any good, it is whether the gap
+/// between them *shrinks as the search deepens*.
+///
+/// A gap that is wide at two turns and narrow at five means Protect was being
+/// overvalued by the short horizon. A gap that holds steady means Protect is
+/// simply worth that much and the horizon was never the problem.
+pub fn guard_probe(registry: &Registry) -> BattleState {
+	let mut state = six_asymmetric(registry);
+	// Team zero's second slot becomes the first one with guard swapped out, so
+	// the pair differs in that move and nothing else. Everything behind them,
+	// and the whole of team one, is left exactly as six_asymmetric has it.
+	//
+	// Roster slots interleave, team zero at even indices, so its second creature
+	// is slot two.
+	*state
+		.roster
+		.get_mut_mon(RosterId(2))
+		.expect("six_asymmetric gives team zero six creatures") =
+		creature(registry, 3, &[5, 6, 16, 7]);
+	state
+}
+
+/// The control for [`guard_probe`]: the same experiment with no *guard* in it.
+///
+/// Without this, [`guard_probe`] proves less than it appears to. It shows a gap
+/// that is wide at two turns, vanishes at three and returns smaller at four —
+/// but a sweep that oscillates like that for *any* pair of movesets would
+/// produce the same picture whatever the moves were, and Protect would be
+/// convicted on evidence that had nothing to do with it.
+///
+/// So here both leads hold a plain attack in the slot under test — *mud wave*
+/// against *mind shatter*, neither carrying a rider, a boost or a block. If the
+/// gap between two ordinary moves is flat across depths, the oscillation in
+/// `guard_probe` belongs to Protect. If it oscillates the same way, it is an
+/// artifact of the sweep and `guard_probe` says nothing.
+pub fn plain_probe(registry: &Registry) -> BattleState {
+	let mut state = six_asymmetric(registry);
+	// Roster slots interleave, team zero at even indices.
+	*state.roster.get_mut_mon(RosterId(0)).expect("team zero has a lead") =
+		creature(registry, 3, &[5, 6, 16, 7]);
+	*state.roster.get_mut_mon(RosterId(2)).expect("team zero has a second") =
+		creature(registry, 3, &[5, 6, 16, 17]);
+	state
 }
 
 /// A position where setting up is right, and does not pay off for many turns.
@@ -437,7 +507,6 @@ pub fn six_asymmetric(registry: &Registry) -> BattleState {
 mod tests {
 	use super::*;
 	use crate::battle::state::field::PositionId;
-	use crate::battle::state::Team;
 	use crate::model::pmove::MoveId;
 	use crate::rl::mask::Mask;
 
@@ -595,6 +664,83 @@ mod tests {
 			.clone();
 		assert_eq!(effectiveness(element(16), &prize).as_f32(), 2.0);
 		assert_eq!(effectiveness(element(6), &prize).as_f32(), 2.0);
+
+		assert!(state.outcome().is_none());
+	}
+
+	/// The whole value of [`guard_probe`] is that its two leads differ in exactly
+	/// one move. If a second difference ever creeps in, the experiment silently
+	/// goes back to being the confounded two-move comparison it was built to
+	/// replace, while still producing numbers.
+	#[test]
+	fn the_guard_probe_leads_differ_in_exactly_one_move() {
+		let registry = Registry::load();
+		let state = guard_probe(&registry);
+
+		let moves = |slot: usize| -> Vec<u32> {
+			state
+				.get_mon_from_team(&Team::Zero, slot)
+				.unwrap()
+				.moves
+				.iter()
+				.map(|id| id.0)
+				.collect()
+		};
+		let (with_guard, without) = (moves(0), moves(1));
+
+		assert_eq!(with_guard.len(), without.len());
+		let differences =
+			with_guard.iter().zip(&without).filter(|(a, b)| a != b).count();
+		assert_eq!(differences, 1, "{with_guard:?} against {without:?}");
+
+		const GUARD: u32 = 25;
+		assert!(with_guard.contains(&GUARD), "the guard set lost its guard");
+		assert!(!without.contains(&GUARD), "the control still holds guard");
+
+		// Same species, so nothing but that move is in play.
+		assert_eq!(
+			state.get_mon_from_team(&Team::Zero, 0).unwrap().species_id,
+			state.get_mon_from_team(&Team::Zero, 1).unwrap().species_id,
+		);
+		assert!(state.outcome().is_none());
+	}
+
+	/// The control only controls if neither of its leads can stall. A rider or a
+	/// block creeping into either slot would quietly turn it into a second copy
+	/// of the experiment it is supposed to be checking.
+	#[test]
+	fn the_plain_probe_compares_two_moves_with_no_tricks() {
+		let registry = Registry::load();
+		let state = plain_probe(&registry);
+
+		// guard, decoy, blade dance, and every move carrying a status rider.
+		const NOT_PLAIN: [u32; 12] = [2, 3, 4, 8, 9, 10, 11, 19, 20, 21, 22, 23];
+		const STALLING: [u32; 3] = [22, 24, 25];
+
+		let moves = |slot: usize| -> Vec<u32> {
+			state
+				.get_mon_from_team(&Team::Zero, slot)
+				.unwrap()
+				.moves
+				.iter()
+				.map(|id| id.0)
+				.collect()
+		};
+		let (first, second) = (moves(0), moves(1));
+
+		let differences = first.iter().zip(&second).filter(|(a, b)| a != b).count();
+		assert_eq!(differences, 1, "{first:?} against {second:?}");
+
+		for (slot, set) in [(0, &first), (1, &second)] {
+			for id in set.iter() {
+				assert!(!STALLING.contains(id), "slot {slot} can stall on move {id}");
+			}
+		}
+		// The move actually under test, in each set, must be a plain attack.
+		let changed: Vec<(u32, u32)> =
+			first.iter().zip(&second).filter(|(a, b)| a != b).map(|(a, b)| (*a, *b)).collect();
+		let (a, b) = changed[0];
+		assert!(!NOT_PLAIN.contains(&a) && !NOT_PLAIN.contains(&b), "{a} against {b} is not plain");
 
 		assert!(state.outcome().is_none());
 	}
