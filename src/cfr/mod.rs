@@ -31,6 +31,7 @@
 //!   beat the hand-written one; see its own notes.
 //! * [`position`] — the positions to point all this at.
 
+pub mod contraction;
 pub mod critic;
 pub mod exploit;
 pub mod infoset;

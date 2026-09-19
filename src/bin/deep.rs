@@ -16,6 +16,7 @@ use rand::SeedableRng;
 use strat_optimizer::battle::engine::engine::StepRequest;
 use strat_optimizer::battle::state::battle_state::BattleState;
 use strat_optimizer::battle::state::{Team, TEAM_SIZE};
+use strat_optimizer::cfr::contraction::{self, ContractionConfig, SensitivityConfig};
 use strat_optimizer::cfr::matrix::MatrixGame;
 use strat_optimizer::cfr::node::DecisionNode;
 use strat_optimizer::cfr::position;
@@ -27,7 +28,9 @@ fn usage() -> String {
 	String::from(
 		"usage:\n  \
 		 deep solve <position> <lookahead> <iterations> [report-every]\n  \
-		 deep leads <position> <lookahead> <iterations-per-matchup>\n\n\
+		 deep leads <position> <lookahead> <iterations-per-matchup>\n  \
+		 deep contraction [walk] [truth-iters] [solve-iters] [noise]\n  \
+		 deep sensitivity <position> <iterations> [noise] [samples]\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
 		 switch_prediction_2v2 | full_team_mirror | known_answer_duel | mirror_duel",
 	)
@@ -45,6 +48,22 @@ fn load(name: &str, registry: &Registry) -> Result<BattleState, Box<dyn Error>> 
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let args: Vec<String> = std::env::args().collect();
+
+	// Takes no position: it builds its own, because the reference value has to be
+	// exact and only a 1v1 searched to the end gives one.
+	if args.get(1).map(String::as_str) == Some("contraction") {
+		contraction(&Registry::load(), &args);
+		return Ok(());
+	}
+
+	// Needs a position but not a lookahead: it sweeps the depths itself.
+	if args.get(1).map(String::as_str) == Some("sensitivity") && args.len() >= 4 {
+		let registry = Registry::load();
+		let root = load(&args[2], &registry)?;
+		sensitivity(&registry, &root, &args);
+		return Ok(());
+	}
+
 	if args.len() < 5 {
 		println!("{}", usage());
 		return Ok(());
@@ -65,6 +84,59 @@ fn main() -> Result<(), Box<dyn Error>> {
 		_ => println!("{}", usage()),
 	}
 	Ok(())
+}
+
+/// How much of a leaf estimate's error does the search remove?
+fn contraction(registry: &Registry, args: &[String]) {
+	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
+	let config = ContractionConfig {
+		walk: number(2).unwrap_or(2),
+		truth_iterations: number(3).unwrap_or(4_000),
+		solve_iterations: number(4).unwrap_or(1_500),
+		noise: args.get(5).and_then(|arg| arg.parse().ok()).unwrap_or(0.5),
+		progress: true,
+		..ContractionConfig::default()
+	};
+
+	println!("=== contraction ===");
+	println!(
+		"  reference: 1v1 solved to the end, {} iterations",
+		config.truth_iterations,
+	);
+	println!(
+		"  depth-limited solves: {} iterations at depths {:?}",
+		config.solve_iterations, config.depths,
+	);
+
+	let start = Instant::now();
+	let report = contraction::measure(registry, &config);
+	println!("\n{report}");
+	println!("\ntotal {:.1?}", start.elapsed());
+}
+
+/// Does the leaf estimate reach the root at a position that actually needs one?
+fn sensitivity(registry: &Registry, root: &BattleState, args: &[String]) {
+	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
+	let config = SensitivityConfig {
+		iterations: number(3).unwrap_or(1_500),
+		noise: args.get(4).and_then(|arg| arg.parse().ok()).unwrap_or(0.5),
+		samples: number(5).unwrap_or(6),
+		progress: true,
+		..SensitivityConfig::default()
+	};
+
+	println!("=== sensitivity: {} ===", args[2]);
+	describe(registry, root);
+	println!(
+		"  {} iterations per solve, {} perturbations of {:.2} at depths {:?}\n",
+		config.iterations, config.samples, config.noise, config.depths,
+	);
+
+	let start = Instant::now();
+	let report =
+		contraction::sensitivity(registry, root, &StepRequest::NeedsActions, &config);
+	println!("\n{report}");
+	println!("\ntotal {:.1?}", start.elapsed());
 }
 
 /// Describe the position, so a pasted log is self-contained.
