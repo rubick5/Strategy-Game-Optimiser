@@ -506,6 +506,8 @@ pub fn six_asymmetric(registry: &Registry) -> BattleState {
 mod tests {
 	use super::*;
 	use crate::battle::state::field::PositionId;
+	// Used only by the tests; guard_probe reaches the roster through RosterId.
+	use crate::battle::state::Team;
 	use crate::model::pmove::MoveId;
 	use crate::rl::mask::Mask;
 
