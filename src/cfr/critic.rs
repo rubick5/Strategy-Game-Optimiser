@@ -1056,6 +1056,9 @@ impl rand::RngCore for RngWrapper<'_> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	// Only the tests build positions from this one; importing it at module
+	// scope makes it dead weight in a release build.
+	use crate::cfr::position::switch_prediction_2v2;
 	use crate::battle::state::field::PositionId;
 	use rand::rngs::StdRng;
 	use rand::SeedableRng;
