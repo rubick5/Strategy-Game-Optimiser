@@ -23,7 +23,7 @@ use strat_optimizer::cfr::leaf::LeafSource;
 use strat_optimizer::cfr::matrix::MatrixGame;
 use strat_optimizer::cfr::node::DecisionNode;
 use strat_optimizer::cfr::position;
-use strat_optimizer::cfr::solver::{action_label, Solver, SolverConfig};
+use strat_optimizer::cfr::solver::{action_label, Solver, SolverConfig, DEFAULT_QUIESCENCE};
 use strat_optimizer::model::registry::Registry;
 use strat_optimizer::rl::moveslot::MAX_DECISION;
 
@@ -36,7 +36,8 @@ fn usage() -> String {
 		 deep sensitivity <position> <iterations> [noise] [samples]\n  \
 		 deep horizon <position> <zero-a> <zero-b> <one> [iters] [seeds] [max-depth]\n  \
 		 deep train-critic <out-path> [rounds]\n\n\
-		 any solving command takes --leaf health | resource | critic:<path>\n\n\
+		 any solving command takes --leaf health | resource | critic:<path>\n  \
+		 and --quiescence <n> to carry loud positions past the horizon\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
 		 switch_prediction_2v2 | delayed_setup | setup_duel | full_team_mirror | ...",
 	)
@@ -73,9 +74,28 @@ fn take_leaf(args: &mut Vec<String>) -> Result<LeafSource, Box<dyn Error>> {
 	LeafSource::parse(&spec)
 }
 
+/// Pull `--quiescence <n>` out of the argument list, like [`take_leaf`].
+///
+/// Absent means [`DEFAULT_QUIESCENCE`], not zero. Returning zero here would have
+/// the flag's *default* silently disable a fix the solver turns on by itself —
+/// which it did, and the giveaway was a sweep whose numbers came back identical
+/// to four decimal places. Pass `--quiescence 0` to actually turn it off.
+fn take_quiescence(args: &mut Vec<String>) -> Result<usize, Box<dyn Error>> {
+	let Some(at) = args.iter().position(|arg| arg == "--quiescence") else {
+		return Ok(DEFAULT_QUIESCENCE);
+	};
+	if at + 1 >= args.len() {
+		return Err("--quiescence needs a number of extra turns".into());
+	}
+	let turns = args.remove(at + 1).parse()?;
+	args.remove(at);
+	Ok(turns)
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
 	let mut args: Vec<String> = std::env::args().collect();
 	let leaf = take_leaf(&mut args)?;
+	let quiescence = take_quiescence(&mut args)?;
 	let args = args;
 
 	if args.get(1).map(String::as_str) == Some("train-critic") && args.len() >= 3 {
@@ -102,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	if args.get(1).map(String::as_str) == Some("horizon") && args.len() >= 6 {
 		let registry = Registry::load();
 		let root = load(&args[2], &registry)?;
-		horizon_sweep(&registry, &root, &args, &leaf)?;
+		horizon_sweep(&registry, &root, &args, &leaf, quiescence)?;
 		return Ok(());
 	}
 
@@ -189,6 +209,7 @@ fn horizon_sweep(
 	root: &BattleState,
 	args: &[String],
 	leaf: &LeafSource,
+	quiescence: usize,
 ) -> Result<(), Box<dyn Error>> {
 	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
 	let (zero_a, zero_b, one) = (args[3].parse()?, args[4].parse()?, args[5].parse()?);
@@ -198,6 +219,7 @@ fn horizon_sweep(
 		// Cost multiplies about fivefold per extra turn, so the last depth
 		// dominates the run and is worth being able to drop.
 		depths: (2..=number(8).unwrap_or(6)).collect(),
+		quiescence,
 		progress: true,
 		..HorizonConfig::default()
 	};
@@ -209,9 +231,10 @@ fn horizon_sweep(
 		"  team zero slot {zero_a} against slot {zero_b}, both versus team one slot {one}",
 	);
 	println!(
-		"  {} iterations, {} paired seeds, depths {:?}\n",
+		"  {} iterations, {} paired seeds, depths {:?}",
 		config.iterations, config.seeds, config.depths,
 	);
+	println!("  quiescence: {} extra turns for positions still in motion\n", config.quiescence);
 
 	let start = Instant::now();
 	let report = horizon::compare_leads(registry, root, zero_a, zero_b, one, &config, leaf);

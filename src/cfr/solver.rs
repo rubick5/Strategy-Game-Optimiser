@@ -63,6 +63,7 @@ use rand::RngCore;
 use crate::battle::command::Command;
 use crate::battle::engine::engine::{self, StepRequest, StepResult};
 use crate::battle::state::battle_state::BattleState;
+use crate::battle::state::volatile::VolatileKind;
 use crate::battle::state::{Outcome, Team};
 use crate::cfr::infoset::{
 	regrets_from_action_values, sample, InfosetData, InfosetTable, Strategy,
@@ -90,6 +91,14 @@ pub const DEFAULT_MAX_DEPTH: usize = 200;
 ///
 /// Generous, because this bounds a single game rather than a search tree.
 pub const PLAYOUT_CAP: usize = 1_000;
+
+/// Extra turns a loud position is carried for by default.
+///
+/// Two is enough and more is not: the artifact it removes measures 0.039 at two
+/// turns of lookahead, and extending by two, four or six turns all bring it to
+/// within 0.001 of zero. Whatever remains after two extensions is not a shortage
+/// of extensions.
+pub const DEFAULT_QUIESCENCE: usize = 2;
 
 pub struct SolverConfig {
 	pub iterations: usize,
@@ -138,6 +147,30 @@ pub struct SolverConfig {
 	/// matters. Off by default for that reason: a 10% saving does not justify the
 	/// study it would take to be sure.
 	pub transpositions: bool,
+	/// Extra turns the search may take past `max_depth` when the position it
+	/// reached is one the leaf estimate cannot be trusted at.
+	///
+	/// Stopping the search immediately after a Protect makes that Protect free.
+	/// Every one of its costs — the free turn the opponent gets, the streak that
+	/// makes the next one fail, the fact that no progress was made — falls on the
+	/// turn *after* it, and at the horizon there is no turn after. So the last
+	/// turn of any search always offers a cost-free damage block, and the
+	/// shallower the search the larger a share of the game that free turn is.
+	///
+	/// Measured on `guard_probe`: holding *guard* rather than a plain attack is
+	/// worth 0.039 at two turns of lookahead, 0.011 at three and 0.000 at four,
+	/// while two ordinary moves show no gap at any depth. The effect is Protect's
+	/// alone and it is a pure artifact of where the search stops.
+	///
+	/// This is quiescence, borrowed from chess, where the same problem has the
+	/// same fix: do not evaluate a position that is still in motion. Only loud
+	/// lines pay for it, so the cost is far below that of raising `max_depth` for
+	/// every line — and it is capped, because a creature that Protects every turn
+	/// would otherwise extend the search forever.
+	///
+	/// Zero disables it. The default is [`DEFAULT_QUIESCENCE`]; every measurement
+	/// in this project recorded before it existed was taken at zero.
+	pub quiescence: usize,
 }
 
 impl SolverConfig {
@@ -155,6 +188,7 @@ impl Default for SolverConfig {
 			max_depth: DEFAULT_MAX_DEPTH,
 			max_nodes: 50_000_000,
 			transpositions: false,
+			quiescence: DEFAULT_QUIESCENCE,
 		}
 	}
 }
@@ -165,6 +199,7 @@ pub struct Solver<'r> {
 	table: InfosetTable,
 	leaf: Box<dyn LeafEvaluator>,
 	truncated: u64,
+	extended: u64,
 	nodes_visited: u64,
 	/// Running mean of the value computed at each node, when logging is on.
 	value_log: Option<HashMap<(StateKey, Team), (f32, u32)>>,
@@ -180,6 +215,26 @@ pub struct Solver<'r> {
 	/// lookup costs more than the lookup saves.
 	memo: HashMap<(u64, Team, usize), f32>,
 	memo_hits: u64,
+}
+
+/// Is this position one the leaf estimate cannot be trusted at?
+///
+/// Currently that means exactly one thing: somebody has just Protected
+/// successfully. `ProtectStreak` is the right signal rather than `Protect`
+/// itself, because `Protect` is turn-scoped and already gone by the next
+/// decision, whereas the streak is applied on a success and removed the moment
+/// its holder does anything else — so its presence means "the last thing this
+/// creature did was block a turn". A *failed* Protect clears the streak, and
+/// correctly so: that one already took the hit and owes nothing.
+///
+/// Volatiles are wiped when a creature leaves the field, so only something
+/// currently out can be carrying this, and scanning the whole roster is safe.
+fn still_in_motion(state: &BattleState) -> bool {
+	state
+		.roster
+		.all_mons()
+		.flatten()
+		.any(|mon| mon.volatiles.has(VolatileKind::ProtectStreak))
 }
 
 impl<'r> Solver<'r> {
@@ -201,6 +256,7 @@ impl<'r> Solver<'r> {
 			table: InfosetTable::new(),
 			leaf,
 			truncated: 0,
+			extended: 0,
 			nodes_visited: 0,
 			value_log: None,
 			warmup: 0,
@@ -269,6 +325,12 @@ impl<'r> Solver<'r> {
 	/// estimate, and is worth reporting next to the result.
 	pub fn truncated_positions(&self) -> u64 {
 		self.truncated
+	}
+
+	/// Positions the search refused to price because they were still in motion,
+	/// and carried past `max_depth` instead. Zero unless `quiescence` is set.
+	pub fn extended_positions(&self) -> u64 {
+		self.extended
 	}
 
 	/// Whether the solve stopped early on the node budget, leaving the answer
@@ -449,7 +511,19 @@ impl<'r> Solver<'r> {
 		};
 
 		// Out of lookahead, or out of budget: estimate rather than recurse.
-		if depth >= self.config.max_depth || self.nodes_visited >= self.config.max_nodes {
+		//
+		// "Out of lookahead" is not simply `depth >= max_depth`. A position where
+		// a Protect has just resolved is still in motion — the block has been
+		// collected and none of its costs have been paid — so the search carries
+		// on for up to `quiescence` further turns rather than pricing it there.
+		let limit = self.config.max_depth + self.config.quiescence;
+		let out_of_lookahead = depth >= self.config.max_depth
+			&& (depth >= limit || !still_in_motion(&state));
+		if depth >= self.config.max_depth && !out_of_lookahead {
+			self.extended += 1;
+		}
+
+		if out_of_lookahead || self.nodes_visited >= self.config.max_nodes {
 			self.truncated += 1;
 			return self.leaf.value(&state, traverser, self.registry);
 		}
@@ -458,7 +532,10 @@ impl<'r> Solver<'r> {
 		let key = StateKey::new(&state, &request)
 			.expect("a node with actors is not terminal, so it has a key");
 
-		let remaining = self.config.max_depth.saturating_sub(depth);
+		// The extension is part of the horizon, so it belongs in the key: a
+		// position with one extension turn left is not worth what it is worth
+		// with three.
+		let remaining = limit.saturating_sub(depth);
 		let digest = if self.config.transpositions {
 			let mut hasher = DefaultHasher::new();
 			key.hash(&mut hasher);

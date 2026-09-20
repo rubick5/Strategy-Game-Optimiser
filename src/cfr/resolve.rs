@@ -148,6 +148,7 @@ impl<'r> ResolvingPolicy<'r> {
 				max_depth: self.config.max_depth,
 				max_nodes: self.config.max_nodes,
 				transpositions: self.config.transpositions,
+				..SolverConfig::default()
 			},
 			(self.leaf)(),
 		);
