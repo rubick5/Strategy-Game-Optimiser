@@ -136,7 +136,7 @@ use crate::cfr::infoset::{sample as sample_action, InfosetData};
 use crate::cfr::key::{NodeKind, StateKey};
 use crate::cfr::leaf::{HealthHeuristic, LeafEvaluator};
 use crate::cfr::node::DecisionNode;
-use crate::cfr::position::{known_answer_duel, mirror_duel, setup_duel, switch_prediction_2v2};
+use crate::cfr::position::{known_answer_duel, mirror_duel, setup_duel};
 use crate::cfr::solver::{Solver, SolverConfig, PLAYOUT_CAP};
 use crate::model::registry::Registry;
 use crate::rl::encoder::{encode_both, TOTAL_ENCODING_LEN};

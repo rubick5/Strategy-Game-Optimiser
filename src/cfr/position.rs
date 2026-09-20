@@ -36,7 +36,6 @@
 use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::creature_state::CreatureState;
 use crate::battle::state::roster::RosterId;
-use crate::battle::state::Team;
 use crate::model::pmove::MoveId;
 use crate::model::registry::Registry;
 use crate::model::speciesdata::SpeciesId;

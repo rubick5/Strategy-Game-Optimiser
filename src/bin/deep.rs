@@ -282,6 +282,23 @@ fn train_critic(args: &[String]) -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
 
+/// The one place a solver is configured here.
+///
+/// Both long-running commands used to build this inline, and twice now an edit
+/// landed on one and missed the other — most recently leaving `leads` falling
+/// through to `SolverConfig::default()` while its header confidently printed the
+/// quiescence it had been asked for and was not using. A flag that is parsed,
+/// echoed and then ignored is worse than one that is missing, because the log
+/// looks right. One constructor, no second place to miss.
+fn configured(iterations: usize, lookahead: usize, quiescence: usize) -> SolverConfig {
+	SolverConfig {
+		iterations,
+		max_depth: lookahead,
+		quiescence,
+		..SolverConfig::default()
+	}
+}
+
 /// Describe the position, so a pasted log is self-contained.
 fn describe(registry: &Registry, root: &BattleState) {
 	let alive = |team: &Team| {
@@ -354,12 +371,7 @@ fn solve(
 	let mut rng = StdRng::seed_from_u64(20260918);
 	let mut solver = Solver::new(
 		registry,
-		SolverConfig {
-			iterations: report_every,
-			max_depth: lookahead,
-			quiescence,
-			..SolverConfig::default()
-		},
+		configured(report_every, lookahead, quiescence),
 	);
 	solver.log_values(0.5);
 
@@ -444,7 +456,7 @@ fn leads(
 			let mut rng = StdRng::seed_from_u64(20260918);
 			let mut solver = Solver::new(
 				registry,
-				SolverConfig { iterations, max_depth: lookahead, ..SolverConfig::default() },
+				configured(iterations, lookahead, quiescence),
 			);
 			solver.log_values(0.5);
 			solver.solve(&state, &mut rng);
