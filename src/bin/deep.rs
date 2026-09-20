@@ -140,9 +140,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 		"solve" => {
 			let report_every: usize =
 				args.get(5).map(|a| a.parse()).transpose()?.unwrap_or(iterations / 20).max(1);
-			solve(&registry, &root, lookahead, iterations, report_every, &args[2]);
+			solve(&registry, &root, lookahead, iterations, report_every, &args[2], quiescence);
 		}
-		"leads" => leads(&registry, &root, lookahead, iterations),
+		"leads" => leads(&registry, &root, lookahead, iterations, quiescence),
 		_ => println!("{}", usage()),
 	}
 	Ok(())
@@ -341,18 +341,25 @@ fn solve(
 	iterations: usize,
 	report_every: usize,
 	name: &str,
+	quiescence: usize,
 ) {
 	println!("=== solve: {name} ===");
 	describe(registry, root);
 	println!(
 		"  lookahead {lookahead}, {iterations} iterations, reporting every {report_every}"
 	);
+	println!("  quiescence: {quiescence} extra turns for positions still in motion");
 	println!("  (cost grows about fivefold per extra turn of lookahead)\n");
 
 	let mut rng = StdRng::seed_from_u64(20260918);
 	let mut solver = Solver::new(
 		registry,
-		SolverConfig { iterations: report_every, max_depth: lookahead, ..SolverConfig::default() },
+		SolverConfig {
+			iterations: report_every,
+			max_depth: lookahead,
+			quiescence,
+			..SolverConfig::default()
+		},
 	);
 	solver.log_values(0.5);
 
@@ -395,7 +402,13 @@ fn solve(
 /// those values — a matrix game, solved exactly — so the answer is a mixture
 /// rather than a single best lead, which is what the question actually calls for
 /// whenever no lead is safe against everything.
-fn leads(registry: &Registry, root: &BattleState, lookahead: usize, iterations: usize) {
+fn leads(
+	registry: &Registry,
+	root: &BattleState,
+	lookahead: usize,
+	iterations: usize,
+	quiescence: usize,
+) {
 	println!("=== leads ===");
 	describe(registry, root);
 
@@ -411,11 +424,12 @@ fn leads(registry: &Registry, root: &BattleState, lookahead: usize, iterations: 
 	let zero = members(&Team::Zero);
 	let one = members(&Team::One);
 	println!(
-		"  {} x {} = {} matchups, {iterations} iterations each at lookahead {lookahead}\n",
+		"  {} x {} = {} matchups, {iterations} iterations each at lookahead {lookahead}",
 		zero.len(),
 		one.len(),
 		zero.len() * one.len(),
 	);
+	println!("  quiescence: {quiescence} extra turns for positions still in motion\n");
 
 	let start = Instant::now();
 	let mut payoff: Vec<Vec<f32>> = Vec::new();
