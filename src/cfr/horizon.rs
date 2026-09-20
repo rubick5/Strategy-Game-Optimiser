@@ -45,7 +45,7 @@ use crate::battle::state::battle_state::BattleState;
 use crate::battle::state::field::Field;
 use crate::battle::state::Team;
 use crate::cfr::leaf::LeafSource;
-use crate::cfr::solver::{Solver, SolverConfig};
+use crate::cfr::solver::{Solver, SolverConfig, DEFAULT_QUIESCENCE};
 use crate::model::registry::Registry;
 
 pub struct HorizonConfig {
@@ -55,6 +55,9 @@ pub struct HorizonConfig {
 	pub seeds: usize,
 	pub seed: u64,
 	pub max_nodes: u64,
+	/// Extra turns allowed past each depth for positions still in motion. See
+	/// [`SolverConfig::quiescence`].
+	pub quiescence: usize,
 	pub progress: bool,
 }
 
@@ -66,6 +69,7 @@ impl Default for HorizonConfig {
 			seeds: 3,
 			seed: 314_159,
 			max_nodes: SolverConfig::default().max_nodes,
+			quiescence: DEFAULT_QUIESCENCE,
 			progress: false,
 		}
 	}
@@ -115,6 +119,7 @@ fn value_of(
 			iterations: config.iterations,
 			max_depth: depth,
 			max_nodes: config.max_nodes,
+			quiescence: config.quiescence,
 			..SolverConfig::default()
 		},
 		leaf.make(),
