@@ -1,0 +1,73 @@
+    Finished `release` profile [optimized] target(s) in 0.46s
+     Running `target/release/deep leads example_battles/six_asymmetric.json 4 4000`
+=== leads ===
+  team zero: stonewarden, stonewarden, brackenox, thornbeast, mireling, cinderfox
+  team one : gustling, mireling, mireling, cinderfox, cinderfox, thornbeast
+  Zero options (9): stone edge | earth spike | iron press | guard | switch to stonewarden | switch to brackenox | switch to thornbeast | switch to mireling | switch to cinderfox
+  One options (9): static jolt | frost bolt | dizzy ray | decoy | switch to mireling | switch to mireling | switch to cinderfox | switch to cinderfox | switch to thornbeast
+  6 x 6 = 36 matchups, 4000 iterations each at lookahead 4
+
+  stonewarden vs gustling: -0.0232   (209526 infosets, 47.5s elapsed)
+  stonewarden vs mireling: -0.0344   (209040 infosets, 94.5s elapsed)
+  stonewarden vs mireling: -0.0550   (275982 infosets, 140.7s elapsed)
+  stonewarden vs cinderfox: +0.0132   (169880 infosets, 188.4s elapsed)
+  stonewarden vs cinderfox: +0.0115   (169743 infosets, 234.2s elapsed)
+  stonewarden vs thornbeast: -0.0379   (227495 infosets, 287.0s elapsed)
+  stonewarden vs gustling: -0.0295   (307503 infosets, 337.3s elapsed)
+  stonewarden vs mireling: -0.0399   (234665 infosets, 386.8s elapsed)
+  stonewarden vs mireling: -0.0561   (327712 infosets, 434.8s elapsed)
+  stonewarden vs cinderfox: +0.0114   (220008 infosets, 481.7s elapsed)
+  stonewarden vs cinderfox: +0.0111   (225994 infosets, 526.9s elapsed)
+  stonewarden vs thornbeast: -0.0398   (266601 infosets, 579.5s elapsed)
+  brackenox vs gustling: +0.0051   (292960 infosets, 631.4s elapsed)
+  brackenox vs mireling: -0.0135   (190422 infosets, 677.7s elapsed)
+  brackenox vs mireling: -0.0147   (203788 infosets, 723.0s elapsed)
+  brackenox vs cinderfox: -0.0062   (361463 infosets, 776.1s elapsed)
+  brackenox vs cinderfox: -0.0098   (372566 infosets, 829.1s elapsed)
+  brackenox vs thornbeast: -0.0377   (336431 infosets, 881.2s elapsed)
+  thornbeast vs gustling: -0.0318   (371410 infosets, 934.5s elapsed)
+  thornbeast vs mireling: +0.0005   (334184 infosets, 987.6s elapsed)
+  thornbeast vs mireling: +0.0007   (344490 infosets, 1041.7s elapsed)
+  thornbeast vs cinderfox: +0.0032   (444523 infosets, 1097.2s elapsed)
+  thornbeast vs cinderfox: -0.0045   (445204 infosets, 1151.0s elapsed)
+  thornbeast vs thornbeast: +0.0177   (312122 infosets, 1207.3s elapsed)
+  mireling vs gustling: -0.0169   (464994 infosets, 1260.9s elapsed)
+  mireling vs mireling: +0.0001   (349363 infosets, 1315.6s elapsed)
+  mireling vs mireling: -0.0141   (488563 infosets, 1370.4s elapsed)
+  mireling vs cinderfox: +0.0270   (411079 infosets, 1425.1s elapsed)
+  mireling vs cinderfox: +0.0247   (377916 infosets, 1474.9s elapsed)
+  mireling vs thornbeast: -0.0054   (364269 infosets, 1528.3s elapsed)
+  cinderfox vs gustling: -0.0115   (411672 infosets, 1577.4s elapsed)
+  cinderfox vs mireling: -0.0431   (309355 infosets, 1626.6s elapsed)
+  cinderfox vs mireling: -0.0596   (432050 infosets, 1674.7s elapsed)
+  cinderfox vs cinderfox: -0.0083   (376963 infosets, 1723.4s elapsed)
+  cinderfox vs cinderfox: -0.0067   (397280 infosets, 1771.9s elapsed)
+  cinderfox vs thornbeast: -0.0107   (409498 infosets, 1821.7s elapsed)
+
+=== lead matrix (value to team zero) ===
+                    gustling      mireling      mireling     cinderfox     cinderfox    thornbeast
+   stonewarden       -0.0232       -0.0344       -0.0550       +0.0132       +0.0115       -0.0379
+   stonewarden       -0.0295       -0.0399       -0.0561       +0.0114       +0.0111       -0.0398
+     brackenox       +0.0051       -0.0135       -0.0147       -0.0062       -0.0098       -0.0377
+    thornbeast       -0.0318       +0.0005       +0.0007       +0.0032       -0.0045       +0.0177
+      mireling       -0.0169       +0.0001       -0.0141       +0.0270       +0.0247       -0.0054
+     cinderfox       -0.0115       -0.0431       -0.0596       -0.0083       -0.0067       -0.0107
+
+=== how often to lead each ===
+  zero     stonewarden:    0.0%
+  zero     stonewarden:    0.0%
+  zero       brackenox:   49.3%
+  zero      thornbeast:   42.5%
+  zero        mireling:    0.0%
+  zero       cinderfox:    8.2%
+  one         gustling:   59.2%
+  one         mireling:    0.0%
+  one         mireling:    1.5%
+  one        cinderfox:    0.0%
+  one        cinderfox:    0.0%
+  one       thornbeast:   39.3%
+
+value of the preview game to team zero: -0.0119
+lead-choice exploitability: 0.00008   (0 means this mixture is unbeatable *given the matrix*)
+
+total 1822.1s

@@ -1,0 +1,12 @@
+=== horizon: example_battles/six_asymmetric.json ===
+  team zero: stonewarden, stonewarden, brackenox, thornbeast, mireling, cinderfox
+  team one : gustling, mireling, mireling, cinderfox, cinderfox, thornbeast
+  Zero options (9): stone edge | earth spike | iron press | guard | switch to stonewarden | switch to brackenox | switch to thornbeast | switch to mireling | switch to cinderfox
+  One options (9): static jolt | frost bolt | dizzy ray | decoy | switch to mireling | switch to mireling | switch to cinderfox | switch to cinderfox | switch to thornbeast
+  team zero slot 0 against slot 1, both versus team one slot 0
+  1500 iterations, 3 paired seeds, depths [2, 3, 4, 5, 6]
+
+  depth  2: +0.0111 vs -0.0210   difference -0.0321 +/- 0.0013   2s
+  depth  3: -0.0133 vs -0.0124   difference +0.0009 +/- 0.0004   21s
+  depth  4: -0.0200 vs -0.0310   difference -0.0110 +/- 0.0031   190s
+  depth  5: -0.0267 vs -0.0304   difference -0.0037 +/- 0.0033   3900s

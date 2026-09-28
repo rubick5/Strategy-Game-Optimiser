@@ -1,0 +1,22 @@
+warning: unused import: `switch_prediction_2v2`
+   --> src/cfr/critic.rs:139:72
+    |
+139 | use crate::cfr::position::{known_answer_duel, mirror_duel, setup_duel, switch_prediction_2v2};
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `strat-optimizer` (lib) generated 1 warning (run `cargo fix --lib -p strat-optimizer` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.46s
+     Running `target/release/deep horizon example_battles/six_asymmetric.json 0 1 0 1500 3 5 --leaf 'critic:critic.json'`
+=== horizon: example_battles/six_asymmetric.json ===
+  leaf under test: critic from critic.json, trust 1.0
+  team zero: stonewarden, stonewarden, brackenox, thornbeast, mireling, cinderfox
+  team one : gustling, mireling, mireling, cinderfox, cinderfox, thornbeast
+  Zero options (9): stone edge | earth spike | iron press | guard | switch to stonewarden | switch to brackenox | switch to thornbeast | switch to mireling | switch to cinderfox
+  One options (9): static jolt | frost bolt | dizzy ray | decoy | switch to mireling | switch to mireling | switch to cinderfox | switch to cinderfox | switch to thornbeast
+  team zero slot 0 against slot 1, both versus team one slot 0
+  1500 iterations, 3 paired seeds, depths [2, 3, 4, 5]
+
+  depth  2: -0.3603 vs -0.3980   difference -0.0378 +/- 0.0032   130s
+  depth  3: -0.3227 vs -0.3412   difference -0.0185 +/- 0.0095   1333s
