@@ -34,12 +34,33 @@ cargo test --release          # 217 tests
 ### Train the PPO agent
 
 ```bash
-cargo run --release           # src/main.rs — the training loop
+cargo run --release                          # 5,000 batches -> agent.json
+cargo run --release -- <batches> <out-path>  # a shorter run
 ```
 
 Self-play against past selves plus a league of purpose-trained **exploiters**
 (retrained every 200 batches). A mature run is roughly 45% exploiters, 47% past
 selves, 8% fixed opponents. Win rates against the fixed opponents print as it goes.
+
+The default is 160,000 battles, about two hours at a measured ~1.4s per batch.
+A shorter run is a real small run rather than the first slice of a long one:
+the opponent mix and the learning-rate decay are scheduled as a *fraction* of
+the run, so passing fewer batches compresses the whole curriculum into them.
+
+### Measure how exploitable an agent is
+
+```bash
+cargo run --release --bin exploit [agent.json]
+```
+
+Trains a throwaway prober whose only job is to find holes in the saved agent,
+and reports how far above the 50% reference it got — about 15 minutes. It scores
+**the worst of the two seats, not their average**, because an agent is only as
+unexploitable as the side it plays worst.
+
+Note the saved file is a bare policy net (the PPO *actor*), which is why a
+PPO-trained `agent.json` loads here as a `BotAgent`: both choose moves by
+`forward` → `mask.apply` → `softmax_then_select`, so only the weights differ.
 
 ### Play against an agent yourself
 
@@ -255,16 +276,26 @@ inherit the slower of the two.
 
 > ⚠️ **The PPO-era win rates are not recorded anywhere.** `src/agent.json` is from
 > August and predates the encoder change (655 → 799 inputs), so it no longer
-> loads. Reproducing those figures needs a fresh training run — see *Open
-> questions*. Every CFR number above was measured directly and is reproducible
-> from the commands in this README.
+> loads, and nothing else in the repo kept those figures.
+>
+> The two commands that would fill this in are under *Quick start* — train, then
+> probe — and the pipeline between them has been verified end to end on a
+> throwaway 20-batch agent. That rehearsal's numbers are deliberately **not**
+> reported here: an agent with 28 seconds of training says nothing about the
+> architecture, only that the plumbing connects.
+>
+> Every CFR number above was measured directly and is reproducible from the
+> commands in this README.
 
 ---
 
 ## Open questions
 
-- **PPO benchmark figures.** A training run plus `rl::evaluate` against the fixed
-  opponents would fill the gap above.
+- **PPO benchmark figures.** Blocked only on compute: `cargo run --release`
+  followed by `--bin exploit` produces them, and both halves are verified. Two
+  hours plus fifteen minutes.
+- **`src/agent.json` is dead weight.** It cannot load against the current encoder
+  and nothing reads it. Delete it or regenerate it.
 - **A 6v6 curriculum for the critic.** Until it trains on positions the size of
   the ones it is asked about, its 6v6 estimates mean nothing.
 - **The depth-3 residual** in the guard sweep sits at −0.012 and is unmoved by
