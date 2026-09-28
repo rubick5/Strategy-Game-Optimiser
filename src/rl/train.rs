@@ -11,7 +11,8 @@ pub const ENTROPY_REWARD_RATE: f32 = 0.05;
 
 // note that the total number of battles used for training
 // will be BATCH_COUNT * BATCH_SIZE
-const BATCH_COUNT: usize = 5_000;
+/// The default run length. Overridable, see [`main_loop`].
+pub const BATCH_COUNT: usize = 5_000;
 const BATCH_SIZE: usize = 32;
 
 const BATCH_PRINT_FREQ: usize = 50;
@@ -234,7 +235,23 @@ fn decay_train_config(train_config: &mut TrainConfig, batch_num: usize, total_ba
 	train_config.entropy_reward_rate = ENTROPY_REWARD_RATE * (total_batches_f32 - batch_num_f32) / total_batches_f32 + 0.05;
 }
 
-pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore, battle_state_paths: &[&str]) -> Result<(), Box<dyn Error>> {
+/// Train an agent and save the best version seen.
+///
+/// `batches` is how long the run is, and it is a parameter rather than
+/// [`BATCH_COUNT`] because it is not only a stopping point: the exploiter and
+/// static opponent mixes and the learning-rate decay are all scheduled as a
+/// *fraction* of the run. Passing a shorter run therefore compresses the whole
+/// curriculum into it rather than truncating it partway, which is what makes a
+/// short run a useful rehearsal of a long one instead of just its first tenth.
+///
+/// `out_path` is where the best agent by frozen evaluation is written.
+pub fn main_loop(
+	mut agent: impl LearningAgent + 'static,
+	rng: &mut dyn RngCore,
+	battle_state_paths: &[&str],
+	batches: usize,
+	out_path: &str,
+) -> Result<(), Box<dyn Error>> {
 	let registry = Registry::load();
 	let mut window = TrainingWindow::default();
 
@@ -266,7 +283,7 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 	let baseline = evaluate::evaluate(&mut agent, &registry, &battle_states, EVAL_BATTLES_EACH);
 	evaluate::print_results(0, &baseline);
 
-	for batch_num in 0..BATCH_COUNT {
+	for batch_num in 0..batches {
 		// Before the batch, so the new exploiter is in the pool for it.
 		if batch_num > 0 && batch_num % EXPLOITER_FREQ == 0 {
 			refresh_exploiter_pool(
@@ -274,8 +291,8 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 			);
 		}
 
-		let draw_exploiter = exploiter_chance(batch_num, BATCH_COUNT);
-		let draw_static = static_chance(batch_num, BATCH_COUNT);
+		let draw_exploiter = exploiter_chance(batch_num, batches);
+		let draw_static = static_chance(batch_num, batches);
 
 		let mut current_batch: Vec<PlayedBattle> = Vec::new();
 		for _ in 0..BATCH_SIZE {
@@ -301,7 +318,7 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 		}
 
 		if batch_num % BATCH_PRINT_FREQ == 0 {
-			decay_train_config(&mut train_config, batch_num, BATCH_COUNT);
+			decay_train_config(&mut train_config, batch_num, batches);
 			window.print(batch_num);
 			// The mix is the thing that most determines what the agent becomes,
 			// so it should be visible rather than buried in two constants.
@@ -340,7 +357,7 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 	println!("\nfinal state of agent:");
 	final_agent_checks(&mut agent, &registry, &battle_states[0]);
 	let final_results = evaluate::evaluate(&mut agent, &registry, &battle_states, EVAL_BATTLES_EACH);
-	evaluate::print_results(BATCH_COUNT, &final_results);
+	evaluate::print_results(batches, &final_results);
 	if evaluate::overall_win_rate(&final_results) > best_eval_score {
 		best_eval_score = evaluate::overall_win_rate(&final_results);
 		best_agent = agent.clone();
@@ -349,8 +366,8 @@ pub fn main_loop(mut agent: impl LearningAgent + 'static, rng: &mut dyn RngCore,
 	println!("\nbest agent by frozen eval ({:.1}% overall):", best_eval_score * 100.0);
 	final_agent_checks(&mut best_agent, &registry, &battle_states[0]);
 
-	println!("Saving best agent to file: agent.json...");
-	best_agent.to_file("agent.json")
+	println!("Saving best agent to file: {out_path}...");
+	best_agent.to_file(out_path)
 }
 
 #[cfg(test)]
