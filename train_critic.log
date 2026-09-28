@@ -1,0 +1,22 @@
+warning: unused import: `switch_prediction_2v2`
+   --> src/cfr/critic.rs:139:72
+    |
+139 | use crate::cfr::position::{known_answer_duel, mirror_duel, setup_duel, switch_prediction_2v2};
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `strat-optimizer` (lib) generated 1 warning (run `cargo fix --lib -p strat-optimizer` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.58s
+     Running `target/release/deep train-critic critic.json 4`
+=== train-critic ===
+  3 training positions, 4 rounds
+  each round re-solves with what has been learned so far
+
+  round 0: 2372 positions, 33251 labels (14.0 each), mse 0.16339
+  round 1: 2577 positions, 36080 labels (14.0 each), mse 0.15047
+  round 2: 1540 positions, 56983 labels (37.0 each), mse 0.12143
+  round 3: 2162 positions, 29948 labels (13.9 each), mse 0.12040
+
+wrote critic.json after 20.6s
+use it with:  deep <command> ... --leaf critic:critic.json

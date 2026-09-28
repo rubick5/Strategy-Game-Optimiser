@@ -1,0 +1,27 @@
+=== horizon: guard_probe ===
+  leaf under test: health heuristic
+  team zero: stonewarden, stonewarden, brackenox, thornbeast, mireling, cinderfox
+  team one : gustling, mireling, mireling, cinderfox, cinderfox, thornbeast
+  Zero options (9): stone edge | earth spike | iron press | guard | switch to stonewarden | switch to brackenox | switch to thornbeast | switch to mireling | switch to cinderfox
+  One options (9): static jolt | frost bolt | dizzy ray | decoy | switch to mireling | switch to mireling | switch to cinderfox | switch to cinderfox | switch to thornbeast
+  team zero slot 0 against slot 1, both versus team one slot 0
+  1500 iterations, 3 paired seeds, depths [2, 3, 4, 5]
+
+  depth  2: +0.0111 vs -0.0199   difference -0.0310 +/- 0.0006   3s
+  depth  3: -0.0129 vs -0.0125   difference +0.0004 +/- 0.0005   25s
+  depth  4: -0.0191 vs -0.0310   difference -0.0119 +/- 0.0019   203s
+  depth  5: -0.0278 vs -0.0286   difference -0.0008 +/- 0.0049   3895s
+
+A = stonewarden (slot one)
+B = stonewarden (slot two)
+
+ depth          A          B        B - A     +/- sd       leaves     secs
+     2    +0.0111    -0.0199      -0.0310     0.0006       115620        3
+     3    -0.0129    -0.0125      +0.0004     0.0005       990453       25
+     4    -0.0191    -0.0310      -0.0119     0.0019      8209000      203
+     5    -0.0278    -0.0286      -0.0008     0.0049     69751464     3895
+
+B - A climbing with depth means the horizon was underpricing B.
+Flat means B is simply the weaker lead. Ignore any move smaller than the sd.
+
+total 4125.3s
