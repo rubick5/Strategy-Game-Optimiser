@@ -146,6 +146,62 @@ Roughly in dependency order:
 
 ## Results
 
+### The PPO agent
+
+A full run — 5,000 batches, 160,000 battles, 3h52m, plus 23 minutes to probe it.
+
+Win rate against the four fixed opponents, at the random initialisation and at
+the checkpoint that was saved:
+
+| opponent | at init | best (batch 4800) |
+|---|---|---|
+| random | 62% | **94%** |
+| spam-0 | 22% | **96%** |
+| spam-1 | 58% | **100%** |
+| spam-2 | 72% | **100%** |
+| **overall** | **53.5%** | **97.5%** |
+
+The more interesting number is the league's own. Every 200 batches an exploiter
+is trained from scratch against a frozen copy of the agent, on an **identical
+300-batch budget** whichever point of the run it is built at — so its score is a
+like-for-like read on whether the agent currently has a hole:
+
+```
+  batch  200    90%        batch 3000    73%
+  batch  600    85%        batch 3600    72%
+  batch 1000    93%        batch 4200    18%
+  batch 1800    93%        batch 4600    32%
+  batch 2400    83%        batch 4800     0%
+```
+
+For most of the run a dedicated exploiter beats the agent 70–93% of the time.
+Over the last few hundred batches that collapses. At batch 4800 an exploiter
+trained solely to beat this agent **never won a single battle** — and that figure
+is the *peak* over the exploiter's own training, not its final score.
+
+The independent probe agrees. 800 batches against the saved agent:
+
+```
+                 prober     mirror  exploitable   baseline
+  as team zero      5.0%      23.0%         0.0      11.0%
+  as team one       2.0%      71.0%         0.0       2.0%
+
+  target 100 / prober 0 / draws 0   over 100 battles
+```
+
+**Read that with the caveat the probe itself prints.** As team zero the prober
+won 5% where simply spamming one move wins 11%, so it underperformed a fixed
+baseline. A 0.0 that comes from the prober failing to learn is not the same
+claim as a 0.0 that comes from there being nothing to find, and this measurement
+cannot separate them. What it does establish is that 800 batches of
+purpose-built search found no line the agent could not answer.
+
+One more thing worth recording rather than celebrating: the saved policy is
+close to **deterministic** on one seat, putting 85% of its mass on a single
+opening action as team zero. In a simultaneous-move game that is normally the
+shape of something exploitable. Nothing here managed to exploit it, but "no
+exploit was found" and "no exploit exists" are different statements.
+
 ### The solver works
 
 | measurement | result |
@@ -274,28 +330,37 @@ inherit the slower of the two.
 | + league | purpose-trained exploiters every 200 batches | current PPO |
 | `src/cfr/` | CFR matchup solver | the study tool |
 
-> ⚠️ **The PPO-era win rates are not recorded anywhere.** `src/agent.json` is from
-> August and predates the encoder change (655 → 799 inputs), so it no longer
-> loads, and nothing else in the repo kept those figures.
->
-> The two commands that would fill this in are under *Quick start* — train, then
-> probe — and the pipeline between them has been verified end to end on a
-> throwaway 20-batch agent. That rehearsal's numbers are deliberately **not**
-> reported here: an agent with 28 seconds of training says nothing about the
-> architecture, only that the plumbing connects.
->
-> Every CFR number above was measured directly and is reproducible from the
-> commands in this README.
+Measured end points, where they exist:
+
+| | overall vs fixed opponents | exploitable by an 800-batch prober |
+|---|---|---|
+| random initialisation | 53.5% | — |
+| `PPOAgent` + league, 5,000 batches | **97.5%** | **0.0 points** |
+| `BotAgent` | not measured | not measured |
+
+> ⚠️ **`BotAgent`'s numbers were never recorded and are not reproducible cheaply.**
+> The old `src/agent.json` is from August, predates the encoder change
+> (655 → 799 inputs) and no longer loads, so the only way to fill that row is to
+> train one — another four hours. It is the earlier architecture and nothing
+> depends on it, so this is left open rather than guessed at.
+
+The PPO and CFR figures answer different questions on different positions and
+are **not comparable to each other**. One is a win rate against a fixed pool on
+`fair_start_battle`; the other is a best-response gap on a specific solved
+position. Neither is evidence about the other.
 
 ---
 
 ## Open questions
 
-- **PPO benchmark figures.** Blocked only on compute: `cargo run --release`
-  followed by `--bin exploit` produces them, and both halves are verified. Two
-  hours plus fifteen minutes.
-- **`src/agent.json` is dead weight.** It cannot load against the current encoder
-  and nothing reads it. Delete it or regenerate it.
+- **Is the PPO agent actually unexploitable, or is the prober just weak?** Its
+  0.0 rests on a prober that underperformed a fixed baseline on one seat. A
+  longer prober budget would separate the two readings.
+- **The near-deterministic opening.** 85% on one action as team zero is the shape
+  of an exploitable policy, and nothing found the exploit. Worth pointing the CFR
+  solver at that exact position and comparing what it says the mixture should be.
+- **`BotAgent` has no figures**, and `src/agent.json` is dead weight — it cannot
+  load against the current encoder and nothing reads it.
 - **A 6v6 curriculum for the critic.** Until it trains on positions the size of
   the ones it is asked about, its 6v6 estimates mean nothing.
 - **The depth-3 residual** in the guard sweep sits at −0.012 and is unmoved by
