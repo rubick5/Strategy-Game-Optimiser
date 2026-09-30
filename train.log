@@ -1,0 +1,367 @@
+=== started Tue 29 Sep 2026 00:28:15 BST : 5000 batches -> agent.json ===
+training 5000 batches, saving the best to agent.json
+  [eval @ batch 0] overall 53.5%
+    vs random    62.0% win  (31W/17L/2D/0T)  mean 18 turns
+    vs spam-0    22.0% win  (11W/39L/0D/0T)  mean 15 turns
+    vs spam-1    58.0% win  (29W/20L/1D/0T)  mean 16 turns
+    vs spam-2    72.0% win  (36W/13L/1D/0T)  mean 18 turns
+batch 0: battles won: 17 out of 32 (53.1%) | draws 1 | timeouts 0 (0.0%) | mean 18.2 turns
+          opponent mix: 70% static | 30% past selves | 0% exploiters (0 in pool)
+batch 50: battles won: 1030 out of 1600 (64.4%) | draws 35 | timeouts 0 (0.0%) | mean 16.6 turns
+          opponent mix: 69% static | 31% past selves | 0% exploiters (0 in pool)
+batch 100: battles won: 1094 out of 1600 (68.4%) | draws 25 | timeouts 0 (0.0%) | mean 16.2 turns
+          opponent mix: 69% static | 31% past selves | 0% exploiters (0 in pool)
+batch 150: battles won: 1061 out of 1600 (66.3%) | draws 22 | timeouts 0 (0.0%) | mean 16.0 turns
+          opponent mix: 68% static | 32% past selves | 0% exploiters (0 in pool)
+batch 200: new exploiter trained - it beats the current agent 90% of the time (as zero 93%, as one 87%)
+batch 200: battles won: 1134 out of 1600 (70.9%) | draws 23 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 60% static | 29% past selves | 11% exploiters (1 in pool)
+  [eval @ batch 200] overall 67.5%
+    vs random    74.0% win  (37W/13L/0D/0T)  mean 17 turns
+    vs spam-0    42.0% win  (21W/29L/0D/0T)  mean 15 turns
+    vs spam-1    68.0% win  (34W/15L/1D/0T)  mean 16 turns
+    vs spam-2    86.0% win  (43W/6L/1D/0T)  mean 17 turns
+batch 250: battles won: 1046 out of 1600 (65.4%) | draws 35 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 59% static | 29% past selves | 12% exploiters (1 in pool)
+batch 300: battles won: 978 out of 1600 (61.1%) | draws 26 | timeouts 0 (0.0%) | mean 15.7 turns
+          opponent mix: 59% static | 29% past selves | 12% exploiters (1 in pool)
+batch 350: battles won: 1031 out of 1600 (64.4%) | draws 32 | timeouts 0 (0.0%) | mean 15.5 turns
+          opponent mix: 58% static | 30% past selves | 12% exploiters (1 in pool)
+batch 400: new exploiter trained - it beats the current agent 88% of the time (as zero 83%, as one 93%)
+batch 400: battles won: 993 out of 1600 (62.1%) | draws 26 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 57% static | 30% past selves | 13% exploiters (2 in pool)
+  [eval @ batch 400] overall 72.5%
+    vs random    80.0% win  (40W/9L/1D/0T)  mean 17 turns
+    vs spam-0    32.0% win  (16W/34L/0D/0T)  mean 15 turns
+    vs spam-1    88.0% win  (44W/6L/0D/0T)  mean 16 turns
+    vs spam-2    90.0% win  (45W/4L/1D/0T)  mean 16 turns
+batch 450: battles won: 971 out of 1600 (60.7%) | draws 21 | timeouts 0 (0.0%) | mean 15.2 turns
+          opponent mix: 56% static | 30% past selves | 13% exploiters (2 in pool)
+batch 500: battles won: 981 out of 1600 (61.3%) | draws 27 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 56% static | 31% past selves | 14% exploiters (2 in pool)
+batch 550: battles won: 980 out of 1600 (61.2%) | draws 19 | timeouts 0 (0.0%) | mean 15.5 turns
+          opponent mix: 55% static | 31% past selves | 14% exploiters (2 in pool)
+batch 600: new exploiter trained - it beats the current agent 85% of the time (as zero 77%, as one 93%)
+batch 600: battles won: 1044 out of 1600 (65.2%) | draws 15 | timeouts 0 (0.0%) | mean 15.3 turns
+          opponent mix: 54% static | 31% past selves | 14% exploiters (3 in pool)
+  [eval @ batch 600] overall 84.5%
+    vs random    82.0% win  (41W/8L/1D/0T)  mean 16 turns
+    vs spam-0    62.0% win  (31W/18L/1D/0T)  mean 14 turns
+    vs spam-1    94.0% win  (47W/3L/0D/0T)  mean 14 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 15 turns
+batch 650: battles won: 963 out of 1600 (60.2%) | draws 27 | timeouts 0 (0.0%) | mean 15.4 turns
+          opponent mix: 54% static | 32% past selves | 15% exploiters (3 in pool)
+batch 700: battles won: 915 out of 1600 (57.2%) | draws 31 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 53% static | 32% past selves | 15% exploiters (3 in pool)
+batch 750: battles won: 954 out of 1600 (59.6%) | draws 25 | timeouts 0 (0.0%) | mean 15.4 turns
+          opponent mix: 52% static | 32% past selves | 15% exploiters (3 in pool)
+batch 800: new exploiter trained - it beats the current agent 57% of the time (as zero 30%, as one 83%)
+batch 800: battles won: 1008 out of 1600 (63.0%) | draws 18 | timeouts 0 (0.0%) | mean 15.3 turns
+          opponent mix: 52% static | 33% past selves | 16% exploiters (4 in pool)
+  [eval @ batch 800] overall 80.0%
+    vs random    80.0% win  (40W/9L/1D/0T)  mean 17 turns
+    vs spam-0    64.0% win  (32W/17L/1D/0T)  mean 15 turns
+    vs spam-1    84.0% win  (42W/8L/0D/0T)  mean 15 turns
+    vs spam-2    92.0% win  (46W/4L/0D/0T)  mean 17 turns
+batch 850: battles won: 962 out of 1600 (60.1%) | draws 20 | timeouts 0 (0.0%) | mean 15.7 turns
+          opponent mix: 51% static | 33% past selves | 16% exploiters (4 in pool)
+batch 900: battles won: 908 out of 1600 (56.8%) | draws 34 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 50% static | 33% past selves | 16% exploiters (4 in pool)
+batch 950: battles won: 984 out of 1600 (61.5%) | draws 25 | timeouts 0 (0.0%) | mean 15.2 turns
+          opponent mix: 50% static | 34% past selves | 17% exploiters (4 in pool)
+batch 1000: new exploiter trained - it beats the current agent 93% of the time (as zero 90%, as one 97%)
+batch 1000: battles won: 927 out of 1600 (57.9%) | draws 31 | timeouts 0 (0.0%) | mean 15.4 turns
+          opponent mix: 49% static | 34% past selves | 17% exploiters (5 in pool)
+  [eval @ batch 1000] overall 78.5%
+    vs random    80.0% win  (40W/8L/2D/0T)  mean 16 turns
+    vs spam-0    52.0% win  (26W/24L/0D/0T)  mean 15 turns
+    vs spam-1    88.0% win  (44W/5L/1D/0T)  mean 15 turns
+    vs spam-2    94.0% win  (47W/3L/0D/0T)  mean 17 turns
+batch 1050: battles won: 949 out of 1600 (59.3%) | draws 34 | timeouts 0 (0.0%) | mean 15.6 turns
+          opponent mix: 48% static | 34% past selves | 17% exploiters (5 in pool)
+batch 1100: battles won: 987 out of 1600 (61.7%) | draws 20 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 48% static | 35% past selves | 18% exploiters (5 in pool)
+batch 1150: battles won: 966 out of 1600 (60.4%) | draws 22 | timeouts 0 (0.0%) | mean 15.5 turns
+          opponent mix: 47% static | 35% past selves | 18% exploiters (5 in pool)
+batch 1200: new exploiter trained - it beats the current agent 82% of the time (as zero 67%, as one 97%)
+batch 1200: battles won: 954 out of 1600 (59.6%) | draws 28 | timeouts 0 (0.0%) | mean 15.5 turns
+          opponent mix: 46% static | 35% past selves | 18% exploiters (5 in pool)
+  [eval @ batch 1200] overall 80.0%
+    vs random    86.0% win  (43W/7L/0D/0T)  mean 17 turns
+    vs spam-0    54.0% win  (27W/23L/0D/0T)  mean 15 turns
+    vs spam-1    82.0% win  (41W/9L/0D/0T)  mean 15 turns
+    vs spam-2    98.0% win  (49W/1L/0D/0T)  mean 16 turns
+batch 1250: battles won: 1020 out of 1600 (63.8%) | draws 20 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 46% static | 36% past selves | 19% exploiters (5 in pool)
+batch 1300: battles won: 945 out of 1600 (59.1%) | draws 27 | timeouts 0 (0.0%) | mean 15.4 turns
+          opponent mix: 45% static | 36% past selves | 19% exploiters (5 in pool)
+batch 1350: battles won: 980 out of 1600 (61.2%) | draws 31 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 44% static | 36% past selves | 19% exploiters (5 in pool)
+batch 1400: new exploiter trained - it beats the current agent 87% of the time (as zero 73%, as one 100%)
+batch 1400: battles won: 927 out of 1600 (57.9%) | draws 26 | timeouts 0 (0.0%) | mean 15.4 turns
+          opponent mix: 44% static | 36% past selves | 20% exploiters (5 in pool)
+  [eval @ batch 1400] overall 84.5%
+    vs random    92.0% win  (46W/4L/0D/0T)  mean 15 turns
+    vs spam-0    62.0% win  (31W/19L/0D/0T)  mean 15 turns
+    vs spam-1    86.0% win  (43W/6L/1D/0T)  mean 14 turns
+    vs spam-2    98.0% win  (49W/1L/0D/0T)  mean 15 turns
+batch 1450: battles won: 935 out of 1600 (58.4%) | draws 32 | timeouts 0 (0.0%) | mean 14.9 turns
+          opponent mix: 43% static | 37% past selves | 20% exploiters (5 in pool)
+batch 1500: battles won: 901 out of 1600 (56.3%) | draws 26 | timeouts 0 (0.0%) | mean 15.0 turns
+          opponent mix: 43% static | 37% past selves | 21% exploiters (5 in pool)
+batch 1550: battles won: 920 out of 1600 (57.5%) | draws 19 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 42% static | 37% past selves | 21% exploiters (5 in pool)
+batch 1600: new exploiter trained - it beats the current agent 55% of the time (as zero 30%, as one 80%)
+batch 1600: battles won: 904 out of 1600 (56.5%) | draws 24 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 41% static | 38% past selves | 21% exploiters (5 in pool)
+  [eval @ batch 1600] overall 84.5%
+    vs random    92.0% win  (46W/2L/2D/0T)  mean 16 turns
+    vs spam-0    62.0% win  (31W/19L/0D/0T)  mean 15 turns
+    vs spam-1    88.0% win  (44W/5L/1D/0T)  mean 14 turns
+    vs spam-2    96.0% win  (48W/2L/0D/0T)  mean 15 turns
+batch 1650: battles won: 916 out of 1600 (57.2%) | draws 26 | timeouts 0 (0.0%) | mean 15.3 turns
+          opponent mix: 41% static | 38% past selves | 22% exploiters (5 in pool)
+batch 1700: battles won: 1017 out of 1600 (63.6%) | draws 26 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 40% static | 38% past selves | 22% exploiters (5 in pool)
+batch 1750: battles won: 926 out of 1600 (57.9%) | draws 23 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 39% static | 38% past selves | 22% exploiters (5 in pool)
+batch 1800: new exploiter trained - it beats the current agent 93% of the time (as zero 90%, as one 97%)
+batch 1800: battles won: 948 out of 1600 (59.2%) | draws 17 | timeouts 0 (0.0%) | mean 15.0 turns
+          opponent mix: 39% static | 39% past selves | 23% exploiters (5 in pool)
+  [eval @ batch 1800] overall 85.5%
+    vs random    84.0% win  (42W/6L/2D/0T)  mean 17 turns
+    vs spam-0    68.0% win  (34W/16L/0D/0T)  mean 15 turns
+    vs spam-1    92.0% win  (46W/4L/0D/0T)  mean 14 turns
+    vs spam-2    98.0% win  (49W/1L/0D/0T)  mean 15 turns
+batch 1850: battles won: 889 out of 1600 (55.6%) | draws 32 | timeouts 0 (0.0%) | mean 15.3 turns
+          opponent mix: 38% static | 39% past selves | 23% exploiters (5 in pool)
+batch 1900: battles won: 894 out of 1600 (55.9%) | draws 36 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 38% static | 39% past selves | 23% exploiters (5 in pool)
+batch 1950: battles won: 873 out of 1600 (54.6%) | draws 26 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 37% static | 39% past selves | 24% exploiters (5 in pool)
+batch 2000: new exploiter trained - it beats the current agent 83% of the time (as zero 67%, as one 100%)
+batch 2000: battles won: 905 out of 1600 (56.6%) | draws 25 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 36% static | 40% past selves | 24% exploiters (5 in pool)
+  [eval @ batch 2000] overall 87.5%
+    vs random    88.0% win  (44W/6L/0D/0T)  mean 15 turns
+    vs spam-0    74.0% win  (37W/13L/0D/0T)  mean 15 turns
+    vs spam-1    90.0% win  (45W/5L/0D/0T)  mean 14 turns
+    vs spam-2    98.0% win  (49W/0L/1D/0T)  mean 15 turns
+batch 2050: battles won: 876 out of 1600 (54.8%) | draws 20 | timeouts 0 (0.0%) | mean 14.7 turns
+          opponent mix: 36% static | 40% past selves | 24% exploiters (5 in pool)
+batch 2100: battles won: 949 out of 1600 (59.3%) | draws 21 | timeouts 0 (0.0%) | mean 14.7 turns
+          opponent mix: 35% static | 40% past selves | 25% exploiters (5 in pool)
+batch 2150: battles won: 900 out of 1600 (56.2%) | draws 20 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 35% static | 40% past selves | 25% exploiters (5 in pool)
+batch 2200: new exploiter trained - it beats the current agent 83% of the time (as zero 70%, as one 97%)
+batch 2200: battles won: 885 out of 1600 (55.3%) | draws 13 | timeouts 0 (0.0%) | mean 15.0 turns
+          opponent mix: 34% static | 40% past selves | 25% exploiters (5 in pool)
+  [eval @ batch 2200] overall 84.0%
+    vs random    82.0% win  (41W/8L/1D/0T)  mean 16 turns
+    vs spam-0    68.0% win  (34W/15L/1D/0T)  mean 14 turns
+    vs spam-1    92.0% win  (46W/4L/0D/0T)  mean 14 turns
+    vs spam-2    94.0% win  (47W/3L/0D/0T)  mean 15 turns
+batch 2250: battles won: 879 out of 1600 (54.9%) | draws 36 | timeouts 0 (0.0%) | mean 15.1 turns
+          opponent mix: 34% static | 41% past selves | 26% exploiters (5 in pool)
+batch 2300: battles won: 858 out of 1600 (53.6%) | draws 28 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 33% static | 41% past selves | 26% exploiters (5 in pool)
+batch 2350: battles won: 889 out of 1600 (55.6%) | draws 22 | timeouts 0 (0.0%) | mean 14.9 turns
+          opponent mix: 32% static | 41% past selves | 26% exploiters (5 in pool)
+batch 2400: new exploiter trained - it beats the current agent 83% of the time (as zero 67%, as one 100%)
+batch 2400: battles won: 884 out of 1600 (55.2%) | draws 20 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 32% static | 41% past selves | 27% exploiters (5 in pool)
+  [eval @ batch 2400] overall 85.5%
+    vs random    88.0% win  (44W/6L/0D/0T)  mean 16 turns
+    vs spam-0    62.0% win  (31W/18L/1D/0T)  mean 14 turns
+    vs spam-1    96.0% win  (48W/2L/0D/0T)  mean 13 turns
+    vs spam-2    96.0% win  (48W/2L/0D/0T)  mean 15 turns
+batch 2450: battles won: 965 out of 1600 (60.3%) | draws 12 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 31% static | 41% past selves | 27% exploiters (5 in pool)
+batch 2500: battles won: 919 out of 1600 (57.4%) | draws 28 | timeouts 0 (0.0%) | mean 14.9 turns
+          opponent mix: 31% static | 42% past selves | 28% exploiters (5 in pool)
+batch 2550: battles won: 889 out of 1600 (55.6%) | draws 21 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 30% static | 42% past selves | 28% exploiters (5 in pool)
+batch 2600: new exploiter trained - it beats the current agent 73% of the time (as zero 50%, as one 97%)
+batch 2600: battles won: 873 out of 1600 (54.6%) | draws 17 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 30% static | 42% past selves | 28% exploiters (5 in pool)
+  [eval @ batch 2600] overall 81.0%
+    vs random    82.0% win  (41W/6L/3D/0T)  mean 16 turns
+    vs spam-0    54.0% win  (27W/23L/0D/0T)  mean 14 turns
+    vs spam-1    90.0% win  (45W/5L/0D/0T)  mean 14 turns
+    vs spam-2    98.0% win  (49W/1L/0D/0T)  mean 14 turns
+batch 2650: battles won: 867 out of 1600 (54.2%) | draws 27 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 29% static | 42% past selves | 29% exploiters (5 in pool)
+batch 2700: battles won: 829 out of 1600 (51.8%) | draws 16 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 29% static | 42% past selves | 29% exploiters (5 in pool)
+batch 2750: battles won: 865 out of 1600 (54.1%) | draws 20 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 28% static | 43% past selves | 29% exploiters (5 in pool)
+batch 2800: new exploiter trained - it beats the current agent 75% of the time (as zero 50%, as one 100%)
+batch 2800: battles won: 887 out of 1600 (55.4%) | draws 18 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 28% static | 43% past selves | 30% exploiters (5 in pool)
+  [eval @ batch 2800] overall 84.0%
+    vs random    86.0% win  (43W/5L/2D/0T)  mean 16 turns
+    vs spam-0    66.0% win  (33W/17L/0D/0T)  mean 14 turns
+    vs spam-1    88.0% win  (44W/6L/0D/0T)  mean 13 turns
+    vs spam-2    96.0% win  (48W/1L/1D/0T)  mean 14 turns
+batch 2850: battles won: 829 out of 1600 (51.8%) | draws 18 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 27% static | 43% past selves | 30% exploiters (5 in pool)
+batch 2900: battles won: 834 out of 1600 (52.1%) | draws 17 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 27% static | 43% past selves | 30% exploiters (5 in pool)
+batch 2950: battles won: 822 out of 1600 (51.4%) | draws 12 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 26% static | 43% past selves | 31% exploiters (5 in pool)
+batch 3000: new exploiter trained - it beats the current agent 73% of the time (as zero 57%, as one 90%)
+batch 3000: battles won: 859 out of 1600 (53.7%) | draws 15 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 26% static | 43% past selves | 31% exploiters (5 in pool)
+  [eval @ batch 3000] overall 90.5%
+    vs random    96.0% win  (48W/2L/0D/0T)  mean 15 turns
+    vs spam-0    74.0% win  (37W/13L/0D/0T)  mean 15 turns
+    vs spam-1    96.0% win  (48W/2L/0D/0T)  mean 14 turns
+    vs spam-2    96.0% win  (48W/1L/1D/0T)  mean 14 turns
+batch 3050: battles won: 855 out of 1600 (53.4%) | draws 23 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 25% static | 44% past selves | 31% exploiters (5 in pool)
+batch 3100: battles won: 844 out of 1600 (52.7%) | draws 13 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 25% static | 44% past selves | 32% exploiters (5 in pool)
+batch 3150: battles won: 912 out of 1600 (57.0%) | draws 16 | timeouts 0 (0.0%) | mean 14.1 turns
+          opponent mix: 24% static | 44% past selves | 32% exploiters (5 in pool)
+batch 3200: new exploiter trained - it beats the current agent 88% of the time (as zero 77%, as one 100%)
+batch 3200: battles won: 907 out of 1600 (56.7%) | draws 22 | timeouts 0 (0.0%) | mean 14.2 turns
+          opponent mix: 24% static | 44% past selves | 32% exploiters (5 in pool)
+  [eval @ batch 3200] overall 91.0%
+    vs random    88.0% win  (44W/6L/0D/0T)  mean 15 turns
+    vs spam-0    82.0% win  (41W/9L/0D/0T)  mean 14 turns
+    vs spam-1    96.0% win  (48W/2L/0D/0T)  mean 13 turns
+    vs spam-2    98.0% win  (49W/1L/0D/0T)  mean 14 turns
+batch 3250: battles won: 919 out of 1600 (57.4%) | draws 19 | timeouts 0 (0.0%) | mean 14.0 turns
+          opponent mix: 23% static | 44% past selves | 33% exploiters (5 in pool)
+batch 3300: battles won: 898 out of 1600 (56.1%) | draws 22 | timeouts 0 (0.0%) | mean 14.1 turns
+          opponent mix: 23% static | 44% past selves | 33% exploiters (5 in pool)
+batch 3350: battles won: 907 out of 1600 (56.7%) | draws 18 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 22% static | 44% past selves | 33% exploiters (5 in pool)
+batch 3400: new exploiter trained - it beats the current agent 83% of the time (as zero 70%, as one 97%)
+batch 3400: battles won: 830 out of 1600 (51.9%) | draws 25 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 22% static | 45% past selves | 34% exploiters (5 in pool)
+  [eval @ batch 3400] overall 85.0%
+    vs random    90.0% win  (45W/5L/0D/0T)  mean 16 turns
+    vs spam-0    58.0% win  (29W/21L/0D/0T)  mean 14 turns
+    vs spam-1    96.0% win  (48W/1L/1D/0T)  mean 13 turns
+    vs spam-2    96.0% win  (48W/1L/1D/0T)  mean 14 turns
+batch 3450: battles won: 848 out of 1600 (53.0%) | draws 22 | timeouts 0 (0.0%) | mean 14.2 turns
+          opponent mix: 21% static | 45% past selves | 34% exploiters (5 in pool)
+batch 3500: battles won: 873 out of 1600 (54.6%) | draws 12 | timeouts 0 (0.0%) | mean 14.2 turns
+          opponent mix: 21% static | 45% past selves | 34% exploiters (5 in pool)
+batch 3550: battles won: 878 out of 1600 (54.9%) | draws 22 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 20% static | 45% past selves | 35% exploiters (5 in pool)
+batch 3600: new exploiter trained - it beats the current agent 72% of the time (as zero 43%, as one 100%)
+batch 3600: battles won: 925 out of 1600 (57.8%) | draws 12 | timeouts 0 (0.0%) | mean 14.2 turns
+          opponent mix: 20% static | 45% past selves | 35% exploiters (5 in pool)
+  [eval @ batch 3600] overall 84.5%
+    vs random    92.0% win  (46W/4L/0D/0T)  mean 16 turns
+    vs spam-0    62.0% win  (31W/19L/0D/0T)  mean 15 turns
+    vs spam-1    88.0% win  (44W/6L/0D/0T)  mean 14 turns
+    vs spam-2    96.0% win  (48W/2L/0D/0T)  mean 15 turns
+batch 3650: battles won: 893 out of 1600 (55.8%) | draws 16 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 19% static | 45% past selves | 36% exploiters (5 in pool)
+batch 3700: battles won: 930 out of 1600 (58.1%) | draws 23 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 19% static | 45% past selves | 36% exploiters (5 in pool)
+batch 3750: battles won: 864 out of 1600 (54.0%) | draws 22 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 18% static | 45% past selves | 36% exploiters (5 in pool)
+batch 3800: new exploiter trained - it beats the current agent 88% of the time (as zero 83%, as one 93%)
+batch 3800: battles won: 871 out of 1600 (54.4%) | draws 20 | timeouts 0 (0.0%) | mean 14.1 turns
+          opponent mix: 18% static | 46% past selves | 37% exploiters (5 in pool)
+  [eval @ batch 3800] overall 93.5%
+    vs random    90.0% win  (45W/5L/0D/0T)  mean 15 turns
+    vs spam-0    92.0% win  (46W/4L/0D/0T)  mean 14 turns
+    vs spam-1    96.0% win  (48W/2L/0D/0T)  mean 14 turns
+    vs spam-2    96.0% win  (48W/2L/0D/0T)  mean 14 turns
+batch 3850: battles won: 882 out of 1600 (55.1%) | draws 20 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 17% static | 46% past selves | 37% exploiters (5 in pool)
+batch 3900: battles won: 838 out of 1600 (52.4%) | draws 19 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 17% static | 46% past selves | 37% exploiters (5 in pool)
+batch 3950: battles won: 855 out of 1600 (53.4%) | draws 19 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 17% static | 46% past selves | 38% exploiters (5 in pool)
+batch 4000: new exploiter trained - it beats the current agent 72% of the time (as zero 43%, as one 100%)
+batch 4000: battles won: 883 out of 1600 (55.2%) | draws 22 | timeouts 0 (0.0%) | mean 14.2 turns
+          opponent mix: 16% static | 46% past selves | 38% exploiters (5 in pool)
+  [eval @ batch 4000] overall 88.0%
+    vs random    92.0% win  (46W/4L/0D/0T)  mean 15 turns
+    vs spam-0    64.0% win  (32W/18L/0D/0T)  mean 15 turns
+    vs spam-1    96.0% win  (48W/2L/0D/0T)  mean 13 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 14 turns
+batch 4050: battles won: 825 out of 1600 (51.6%) | draws 15 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 16% static | 46% past selves | 38% exploiters (5 in pool)
+batch 4100: battles won: 817 out of 1600 (51.1%) | draws 22 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 15% static | 46% past selves | 39% exploiters (5 in pool)
+batch 4150: battles won: 885 out of 1600 (55.3%) | draws 11 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 15% static | 46% past selves | 39% exploiters (5 in pool)
+batch 4200: new exploiter trained - it beats the current agent 18% of the time (as zero 10%, as one 27%)
+batch 4200: battles won: 898 out of 1600 (56.1%) | draws 18 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 14% static | 46% past selves | 39% exploiters (5 in pool)
+  [eval @ batch 4200] overall 91.0%
+    vs random    96.0% win  (48W/1L/1D/0T)  mean 15 turns
+    vs spam-0    70.0% win  (35W/15L/0D/0T)  mean 14 turns
+    vs spam-1    98.0% win  (49W/1L/0D/0T)  mean 13 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 13 turns
+batch 4250: battles won: 1005 out of 1600 (62.8%) | draws 17 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 14% static | 46% past selves | 40% exploiters (5 in pool)
+batch 4300: battles won: 1010 out of 1600 (63.1%) | draws 18 | timeouts 0 (0.0%) | mean 14.5 turns
+          opponent mix: 14% static | 46% past selves | 40% exploiters (5 in pool)
+batch 4350: battles won: 1013 out of 1600 (63.3%) | draws 13 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 13% static | 46% past selves | 40% exploiters (5 in pool)
+batch 4400: new exploiter trained - it beats the current agent 87% of the time (as zero 73%, as one 100%)
+batch 4400: battles won: 1003 out of 1600 (62.7%) | draws 23 | timeouts 0 (0.0%) | mean 14.9 turns
+          opponent mix: 13% static | 46% past selves | 41% exploiters (5 in pool)
+  [eval @ batch 4400] overall 90.0%
+    vs random    86.0% win  (43W/6L/1D/0T)  mean 15 turns
+    vs spam-0    76.0% win  (38W/12L/0D/0T)  mean 15 turns
+    vs spam-1    98.0% win  (49W/1L/0D/0T)  mean 13 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 14 turns
+batch 4450: battles won: 965 out of 1600 (60.3%) | draws 22 | timeouts 0 (0.0%) | mean 14.8 turns
+          opponent mix: 12% static | 46% past selves | 41% exploiters (5 in pool)
+batch 4500: battles won: 1025 out of 1600 (64.1%) | draws 19 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 12% static | 47% past selves | 41% exploiters (5 in pool)
+batch 4550: battles won: 1025 out of 1600 (64.1%) | draws 20 | timeouts 0 (0.0%) | mean 14.3 turns
+          opponent mix: 12% static | 47% past selves | 42% exploiters (5 in pool)
+batch 4600: new exploiter trained - it beats the current agent 32% of the time (as zero 3%, as one 60%)
+batch 4600: battles won: 1088 out of 1600 (68.0%) | draws 20 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 11% static | 47% past selves | 42% exploiters (5 in pool)
+  [eval @ batch 4600] overall 95.5%
+    vs random    94.0% win  (47W/3L/0D/0T)  mean 14 turns
+    vs spam-0    90.0% win  (45W/5L/0D/0T)  mean 13 turns
+    vs spam-1    98.0% win  (49W/1L/0D/0T)  mean 12 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 13 turns
+batch 4650: battles won: 1135 out of 1600 (70.9%) | draws 16 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 11% static | 47% past selves | 43% exploiters (5 in pool)
+batch 4700: battles won: 1093 out of 1600 (68.3%) | draws 21 | timeouts 0 (0.0%) | mean 14.6 turns
+          opponent mix: 10% static | 47% past selves | 43% exploiters (5 in pool)
+batch 4750: battles won: 1186 out of 1600 (74.1%) | draws 17 | timeouts 0 (0.0%) | mean 14.0 turns
+          opponent mix: 10% static | 47% past selves | 43% exploiters (5 in pool)
+batch 4800: new exploiter trained - it beats the current agent 0% of the time (as zero 0%, as one 0%)
+batch 4800: battles won: 1221 out of 1600 (76.3%) | draws 16 | timeouts 0 (0.0%) | mean 14.0 turns
+          opponent mix: 10% static | 47% past selves | 44% exploiters (5 in pool)
+  [eval @ batch 4800] overall 97.5%
+    vs random    94.0% win  (47W/3L/0D/0T)  mean 14 turns
+    vs spam-0    96.0% win  (48W/2L/0D/0T)  mean 13 turns
+    vs spam-1   100.0% win  (50W/0L/0D/0T)  mean 12 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 12 turns
+batch 4850: battles won: 1245 out of 1600 (77.8%) | draws 15 | timeouts 0 (0.0%) | mean 14.4 turns
+          opponent mix: 9% static | 47% past selves | 44% exploiters (5 in pool)
+batch 4900: battles won: 1301 out of 1600 (81.3%) | draws 6 | timeouts 0 (0.0%) | mean 14.0 turns
+          opponent mix: 9% static | 47% past selves | 44% exploiters (5 in pool)
+batch 4950: battles won: 1280 out of 1600 (80.0%) | draws 8 | timeouts 0 (0.0%) | mean 14.0 turns
+          opponent mix: 9% static | 47% past selves | 45% exploiters (5 in pool)
+
+final state of agent:
+  as Zero: [0.007733506, 0.011928244, 0.018534921, 0.028666778, 0.0, 0.03079507, 0.90234154, 0.0, 0.0, 0.0]
+  as One: [0.39340883, 0.13558744, 0.17216685, 0.048750486, 0.0, 0.22810544, 0.021980928, 0.0, 0.0, 0.0]
+  [eval @ batch 5000] overall 96.5%
+    vs random    94.0% win  (47W/3L/0D/0T)  mean 15 turns
+    vs spam-0    92.0% win  (46W/4L/0D/0T)  mean 14 turns
+    vs spam-1   100.0% win  (50W/0L/0D/0T)  mean 12 turns
+    vs spam-2   100.0% win  (50W/0L/0D/0T)  mean 13 turns
+
+best agent by frozen eval (97.5% overall):
+  as Zero: [0.023094473, 0.025140757, 0.016234547, 0.051066842, 0.0, 0.03280029, 0.8516631, 0.0, 0.0, 0.0]
+  as One: [0.46996492, 0.18257302, 0.12016735, 0.07642931, 0.0, 0.12515977, 0.025705598, 0.0, 0.0, 0.0]
+Saving best agent to file: agent.json...
+=== training finished Tue 29 Sep 2026 04:20:48 BST, exit 0 ===
+=== all done Tue 29 Sep 2026 04:44:13 BST ===
