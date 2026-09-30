@@ -42,7 +42,11 @@ Self-play against past selves plus a league of purpose-trained **exploiters**
 (retrained every 200 batches). A mature run is roughly 45% exploiters, 47% past
 selves, 8% fixed opponents. Win rates against the fixed opponents print as it goes.
 
-The default is 160,000 battles, about two hours at a measured ~1.4s per batch.
+The default is 160,000 battles and took **3h52m** measured end to end. Budget
+~2.8s per batch rather than the ~1.1s a batch actually costs: the run also
+trains 25 exploiters of 300 batches each, and they are more than half the bill.
+(A short rehearsal will mislead you here — under 200 batches no exploiter is
+built at all, so it clocks in at ~1.4s and suggests two hours.)
 A shorter run is a real small run rather than the first slice of a long one:
 the opponent mix and the learning-rate decay are scheduled as a *fraction* of
 the run, so passing fewer batches compresses the whole curriculum into them.
@@ -149,6 +153,16 @@ Roughly in dependency order:
 ### The PPO agent
 
 A full run — 5,000 batches, 160,000 battles, 3h52m, plus 23 minutes to probe it.
+Across all of it, **zero timeouts**: every one of those battles reached a real
+result. Mean battle length fell from 18.2 turns to 14.0 as the agent sharpened.
+
+**First, a caveat that colours every number below.** The training position
+`fair_start_battle` is not fair. Its two teams are entirely different creatures —
+thornbeast/mireling/stonewarden against cinderfox/brackenox/gustling — and when
+a copy of the trained agent plays itself, team one wins **71%** to team zero's
+**23%**. Since both copies run the same perspective-relative policy, that gap is
+the *position*, not the player. Every PPO figure here is measured on a board
+where one seat starts roughly three times better off.
 
 Win rate against the four fixed opponents, at the random initialisation and at
 the checkpoint that was saved:
@@ -189,12 +203,25 @@ The independent probe agrees. 800 batches against the saved agent:
   target 100 / prober 0 / draws 0   over 100 battles
 ```
 
-**Read that with the caveat the probe itself prints.** As team zero the prober
-won 5% where simply spamming one move wins 11%, so it underperformed a fixed
-baseline. A 0.0 that comes from the prober failing to learn is not the same
-claim as a 0.0 that comes from there being nothing to find, and this measurement
-cannot separate them. What it does establish is that 800 batches of
-purpose-built search found no line the agent could not answer.
+**That 0.0 should not be read as "unexploitable".** The prober won 5% as team
+zero where spamming a single move wins 11% — it lost to a bot with no policy at
+all. The log says why: **15 of its 18 match-ups have a *switch* as the top
+action**, against 0 of 18 for the target, and the traces show it pivoting back
+and forth — `-> mireling`, `-> thornbeast`, `-> mireling` — absorbing damage
+every turn and never attacking.
+
+That is not an exploit that failed, it is a policy that never formed. The prober
+won 0–2.5% of battles throughout its 800 batches, so the policy gradient had
+almost no signal to work with and what little it had came from a handful of
+lucky episodes, whose contents got amplified. A spam bot beats that because it
+at least attacks.
+
+The failure is structural and worth stating plainly: **this probe method breaks
+down exactly when the target gets strong.** A prober learns from the games it
+wins, so against an opponent it cannot beat it cannot bootstrap — and that is
+precisely the regime where an exploitability measurement is most wanted. It
+worked earlier in the run (exploiters scoring 70–93%) because the agent was
+still weak enough to lose sometimes.
 
 One more thing worth recording rather than celebrating: the saved policy is
 close to **deterministic** on one seat, putting 85% of its mass on a single
@@ -283,8 +310,9 @@ out of distribution for it.
 
 ### The horizon fault was Protect, not setup
 
-A blade-dance moveset looked underpriced at shallow depth. Two probes differing in
-exactly one move settled what was actually happening:
+A blade-dance (spending a turn increasing your attack rather than attacking) moveset
+looked underpriced at shallow depth. Two probes differing in exactly one move settled 
+what was actually happening:
 
 | probe | depth 2 | depth 3 | depth 4 |
 |---|---|---|---|
@@ -353,12 +381,20 @@ position. Neither is evidence about the other.
 
 ## Open questions
 
-- **Is the PPO agent actually unexploitable, or is the prober just weak?** Its
-  0.0 rests on a prober that underperformed a fixed baseline on one seat. A
-  longer prober budget would separate the two readings.
+- **How do you measure the exploitability of a strong agent?** The current probe
+  learns from the games it wins, so it stops working precisely when the target
+  stops losing — it collapsed into a switch-loop and lost to a spam bot. More
+  batches may not fix a policy with no gradient to climb; shaping the prober's
+  reward, or seeding it from the target's own weights, probably would. Until
+  then the 0.0 is uninformative.
+- **`fair_start_battle` is not balanced** — 71/23 to team one when the agent
+  plays itself. The PPO agent is trained and evaluated entirely on it, so the
+  headline 97.5% is a win rate on a board where the seats are not equal. Either
+  balance it or train across several positions.
 - **The near-deterministic opening.** 85% on one action as team zero is the shape
-  of an exploitable policy, and nothing found the exploit. Worth pointing the CFR
-  solver at that exact position and comparing what it says the mixture should be.
+  of an exploitable policy, and nothing found the exploit. The CFR solver can say
+  what the mixture *should* be on that exact position — a direct check on both
+  halves of the project at once, and cheap, since it is a 3v3 with six actions.
 - **`BotAgent` has no figures**, and `src/agent.json` is dead weight — it cannot
   load against the current encoder and nothing reads it.
 - **A 6v6 curriculum for the critic.** Until it trains on positions the size of
