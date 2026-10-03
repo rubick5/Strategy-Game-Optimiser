@@ -20,6 +20,9 @@ use strat_optimizer::cfr::contraction::{self, ContractionConfig, SensitivityConf
 use strat_optimizer::cfr::critic::{self, TrainingConfig};
 use strat_optimizer::cfr::horizon::{self, HorizonConfig};
 use strat_optimizer::cfr::leaf::LeafSource;
+use strat_optimizer::cfr::probe::ResolvingAgent;
+use strat_optimizer::cfr::resolve::ResolvingPolicy;
+use strat_optimizer::rl::exploit;
 use strat_optimizer::cfr::matrix::MatrixGame;
 use strat_optimizer::cfr::node::DecisionNode;
 use strat_optimizer::cfr::position;
@@ -35,7 +38,8 @@ fn usage() -> String {
 		 deep contraction [walk] [truth-iters] [solve-iters] [noise]\n  \
 		 deep sensitivity <position> <iterations> [noise] [samples]\n  \
 		 deep horizon <position> <zero-a> <zero-b> <one> [iters] [seeds] [max-depth]\n  \
-		 deep train-critic <out-path> [rounds]\n\n\
+		 deep train-critic <out-path> [rounds]\n  \
+		 deep probe <position> <lookahead> <solver-iters> [prober-batches] [battles]\n\n\
 		 any solving command takes --leaf health | resource | critic:<path>\n  \
 		 and --quiescence <n> to carry loud positions past the horizon\n\n\
 		 <position> is a builtin name or a path to a battle JSON:\n  \
@@ -100,6 +104,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 	if args.get(1).map(String::as_str) == Some("train-critic") && args.len() >= 3 {
 		return train_critic(&args);
+	}
+
+	if args.get(1).map(String::as_str) == Some("probe") && args.len() >= 5 {
+		let registry = Registry::load();
+		let root = load(&args[2], &registry)?;
+		return probe(&registry, &root, &args, quiescence);
 	}
 
 	// Takes no position: it builds its own, because the reference value has to be
@@ -297,6 +307,80 @@ fn configured(iterations: usize, lookahead: usize, quiescence: usize) -> SolverC
 		quiescence,
 		..SolverConfig::default()
 	}
+}
+
+/// How often does a learner playing whole battles beat the solver?
+///
+/// This is the one measurement that does not care about the truncated game. The
+/// solver re-solves from wherever it is standing, so it has no stale table and no
+/// coverage gaps, and the prober is free to go looking past its horizon — which
+/// is where the solver's remaining weakness lives.
+///
+/// Expensive in a way the other commands are not: every decision the solver makes
+/// is a fresh search. [`ResolvingPolicy`] caches by position, so the cost is in
+/// *distinct* positions rather than decisions, and the hit rate is reported
+/// because it is the difference between this finishing and not.
+fn probe(
+	registry: &Registry,
+	root: &BattleState,
+	args: &[String],
+	quiescence: usize,
+) -> Result<(), Box<dyn Error>> {
+	let number = |index: usize| args.get(index).and_then(|arg| arg.parse().ok());
+	let lookahead: usize = args[3].parse()?;
+	let solver_iterations: usize = args[4].parse()?;
+	let batches = number(5).unwrap_or(300);
+	let battles = number(6).unwrap_or(400);
+
+	println!("=== probe: {} ===", args[2]);
+	describe(registry, root);
+	println!(
+		"  solver: lookahead {lookahead}, {solver_iterations} iterations, quiescence {quiescence}"
+	);
+	println!("  prober: {batches} batches, measured over {battles} battles\n");
+
+	let policy = ResolvingPolicy::with_heuristic(
+		registry,
+		configured(solver_iterations, lookahead, quiescence),
+		20261003,
+	);
+
+	let config = exploit::ExploitConfig {
+		batch_count: batches,
+		measure_battles: battles,
+		trace_battles: 0,
+		summarise_battles: 0,
+		..exploit::ExploitConfig::default()
+	};
+
+	let start = Instant::now();
+	let mut target = ResolvingAgent::new(&policy);
+	let mut mirror = ResolvingAgent::new(&policy);
+	let mut rng = StdRng::seed_from_u64(20261003);
+	let report = exploit::measure_exploitability(
+		&mut target,
+		Some(&mut mirror),
+		registry,
+		std::slice::from_ref(root),
+		&config,
+		&mut rng,
+	);
+	exploit::print_report(&report);
+
+	println!(
+		"\nsolver work: {} solves, {} cache hits ({:.1}% hit rate)",
+		policy.solves(),
+		policy.lookups(),
+		100.0 * policy.lookups() as f32
+			/ (policy.solves() + policy.lookups()).max(1) as f32,
+	);
+	println!(
+		"solver blind decisions: {} of {}",
+		target.fallbacks(),
+		target.decisions(),
+	);
+	println!("\ntotal {:.1?}", start.elapsed());
+	Ok(())
 }
 
 /// Describe the position, so a pasted log is self-contained.
