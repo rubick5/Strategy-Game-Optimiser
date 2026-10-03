@@ -92,6 +92,9 @@ cargo run --release --bin deep -- contraction [walk] [truth-iters] [solve-iters]
 cargo run --release --bin deep -- sensitivity <position> <iterations> [noise] [samples]
 cargo run --release --bin deep -- horizon <position> <a> <b> <one> [iters] [seeds] [max-depth]
 cargo run --release --bin deep -- train-critic <out-path> [rounds]
+
+# How often does a PPO learner playing whole battles beat the solver?
+cargo run --release --bin deep -- probe <position> <lookahead> <solver-iters> [batches] [battles]
 ```
 
 `<position>` is a builtin name or a path to a battle JSON. Any solving command
@@ -221,7 +224,13 @@ down exactly when the target gets strong.** A prober learns from the games it
 wins, so against an opponent it cannot beat it cannot bootstrap — and that is
 precisely the regime where an exploitability measurement is most wanted. It
 worked earlier in the run (exploiters scoring 70–93%) because the agent was
-still weak enough to lose sometimes.
+still weak enough to lose sometimes, and it works against the CFR solver, where
+the same method climbs from 8.9% to 50.7% — so the method is sound and this
+particular application of it is not.
+
+Which also means the 2% here and the 50.7% against the solver **cannot be put
+side by side**. One is a prober that learned; the other is a prober that did
+not, on a different position, at a seventh of the sample size.
 
 One more thing worth recording rather than celebrating: the saved policy is
 close to **deterministic** on one seat, putting 85% of its mass on a single
@@ -233,14 +242,42 @@ exploit was found" and "no exploit exists" are different statements.
 
 | measurement | result |
 |---|---|
-| 2v2 exact best-response exploitability | **≈ 0.07** on a −1..+1 scale |
-| PPO prober against the solver, full game | **≈ 55–45** to the prober |
+| 2v2 exact best-response exploitability | **0.071** on a −1..+1 scale |
+| PPO prober against the solver, full battles | **50.7%** to the prober (n=3,000) |
 | Six-a-side mirror, lead-choice exploitability | **0.00000** |
 | Six-a-side asymmetric, lead-choice exploitability | **0.00008** |
 
-For scale, a best-response gap of 0.07 on a range of 2 is 3.5% — poker solvers
+For scale, a best-response gap of 0.071 on a range of 2 is 3.5% — poker solvers
 target ~0.5% of pot. Different units, but the same order of magnitude rather than
 a different universe.
+
+### The prober fights the solver to a draw
+
+The one measurement that ignores the horizon entirely: train a PPO learner whose
+only job is to beat the solver, let it play **whole battles**, and see what it
+gets. The solver re-solves from wherever it is standing, so there is no stale
+table and no coverage gap — `0 blind decisions out of 174,401`.
+
+On `switch_prediction_2v2`, lookahead 4, 1,500 measured battles a seat:
+
+| | prober | mirror (solver vs itself) | exploitable | best fixed baseline |
+|---|---|---|---|---|
+| as team zero | 49.9% | 52.1% | **0.0 pts** | 8.7% |
+| as team one | 51.5% | 45.9% | **5.6 pts** | 6.7% |
+
+**It cannot get above even.** And it used to: the same measurement before the
+horizon work read 54.3% and 55.7% across two seeds at the same sample size, so
+a dedicated exploiter has gone from winning 55% to 50.7%.
+
+Two things to keep in mind reading that. It is not a perfectly controlled
+comparison — quiescence is on now and the solver's budget may differ from the
+earlier run — though the sample sizes are identical and the direction is not
+subtle. And the 5.6 points is soft: this is a *mirror* position whose true value
+is zero, so the reference ought to be 50% and came back 52.1/45.9. Against that
+much scatter, a prober at 51.5% is within noise of even.
+
+Reproduce with `deep probe` — 7.7 minutes, because the resolver answers 97.9% of
+its positions from cache.
 
 ### Six-a-side team preview
 
