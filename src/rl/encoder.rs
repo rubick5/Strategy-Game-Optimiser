@@ -132,7 +132,7 @@ const MATCHUP_VALUES: usize = 2;
 /// to rediscover the type chart from win/loss signal before it could use any of
 /// it. This gives it the answer directly, in a fifth of the space, which matters
 /// when the thing consuming it is a small MLP trained on limited data.
-const MATCHUP_LEN: usize = 2 * TEAM_SIZE * TEAM_SIZE * MATCHUP_VALUES;
+pub const MATCHUP_LEN: usize = 2 * TEAM_SIZE * TEAM_SIZE * MATCHUP_VALUES;
 
 /// Weather one-hot, weather turns left, trick room, replacement flag.
 const FIELD_ENCODING_LEN: usize = WEATHER_COUNT + 1 + 1 + 1;

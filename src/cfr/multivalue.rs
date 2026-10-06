@@ -32,7 +32,7 @@
 //! # Keeping it zero-sum
 //!
 //! Each side taking its own pessimistic minimum would break the one property
-//! [`HealthHeuristic`](crate::cfr::leaf::HealthHeuristic) had for free: both
+//! [`HealthHeuristic`] had for free: both
 //! sides would be estimated as slightly losing, the values would not sum to zero,
 //! and CFR would be solving a game where value leaks out of the board.
 //!

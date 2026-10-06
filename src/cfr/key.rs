@@ -12,7 +12,7 @@
 //!
 //! 1. **Volatiles are insertion-ordered.** A creature Taunted-then-Seeded and one
 //!    Seeded-then-Taunted are the same position, but the underlying `Vec` compares
-//!    unequal. [`Volatiles::canonicalised`] fixes the order here, at the key,
+//!    unequal. [`Volatiles::canonicalised`](crate::battle::state::volatile::Volatiles::canonicalised) fixes the order here, at the key,
 //!    rather than in `Volatiles::add` — the engine's own iteration order is a
 //!    display and hook-dispatch concern and is deliberately left alone.
 //! 2. **The same state can mean two different decisions.** A position awaiting
