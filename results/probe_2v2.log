@@ -1,0 +1,30 @@
+    Finished `release` profile [optimized] target(s) in 0.43s
+     Running `target/release/deep probe switch_prediction_2v2 4 1500 300 1500`
+=== probe: switch_prediction_2v2 ===
+  team zero: stonewarden, thornbeast
+  team one : stonewarden, thornbeast
+  Zero options (3): aqua pulse | cinder blast | switch to thornbeast
+  One options (3): aqua pulse | cinder blast | switch to thornbeast
+  solver: lookahead 4, 1500 iterations, quiescence 2
+  prober: 300 batches, measured over 1500 battles
+
+exploitability probe: mirror reference is 52.1% as zero, 45.9% as one
+  baselines as zero: random 8.7%, best spam 8.7%   |   as one: random 6.7%, best spam 6.7%
+  batch     0: prober wins   8.9%  (as zero 9%, as one 9%)
+  batch   100: prober wins  49.6%  (as zero 48%, as one 51%)
+  batch   200: prober wins  50.6%  (as zero 50%, as one 51%)
+
+=== exploitability ===
+                 prober     mirror  exploitable   headroom   baseline
+--------------------------------------------------------------------
+as team zero      49.9%      52.1%         0.0    0% used       8.7%
+as team one       51.5%      45.9%         5.6   10% used       6.7%
+--------------------------------------------------------------------
+exploitability: 5.6 points as team one - mildly exploitable
+  (the worst seat, not the average of the two - an agent is only as
+   unexploitable as the side it plays worst)
+
+solver work: 4042 solves, 185387 cache hits (97.9% hit rate)
+solver blind decisions: 0 of 174401
+
+total 460.2s
