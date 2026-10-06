@@ -167,7 +167,7 @@ const HIDDEN: [usize; 2] = [128, 128];
 /// that trusted itself out of the box would be a regression.
 ///
 /// Trust has to be earned by measurement, not assumed.
-const DEFAULT_TRUST: f32 = 0.0;
+pub const DEFAULT_TRUST: f32 = 0.0;
 
 // ---------------------------------------------------------------------------
 // The estimate itself
