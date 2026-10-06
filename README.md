@@ -69,8 +69,12 @@ PPO-trained `agent.json` loads here as a `BotAgent`: both choose moves by
 ### Play against an agent yourself
 
 ```bash
-cargo run --release --bin game
+cargo run --release --bin game --features gui
 ```
+
+The graphical client is the only part needing system graphics libraries, so it is
+opt-in — everything else, both learners and every measurement included, builds and
+tests with no system dependencies.
 
 ### Solve a position
 
@@ -160,12 +164,22 @@ Across all of it, **zero timeouts**: every one of those battles reached a real
 result. Mean battle length fell from 18.2 turns to 14.0 as the agent sharpened.
 
 **First, a caveat that colours every number below.** The training position
-`fair_start_battle` is not fair. Its two teams are entirely different creatures —
-thornbeast/mireling/stonewarden against cinderfox/brackenox/gustling — and when
-a copy of the trained agent plays itself, team one wins **71%** to team zero's
-**23%**. Since both copies run the same perspective-relative policy, that gap is
-the *position*, not the player. Every PPO figure here is measured on a board
-where one seat starts roughly three times better off.
+`fair_start_battle` is not fair — not in the way it first appears, and the
+difference matters. Its two teams are entirely different creatures,
+thornbeast/mireling/stonewarden against cinderfox/brackenox/gustling, and when a
+copy of the trained agent plays itself team one wins **71%** to team zero's
+**23%**.
+
+The obvious reading, which this README gave at first, is that a shared
+perspective-relative policy reveals the *position's* imbalance. That was wrong,
+and solving the position says so: at equilibrium the value to team zero is only
+about **−0.04 to −0.07**, essentially level. A shared policy reveals imbalance
+*under that policy*, including its own asymmetric mistakes — only equilibrium
+play reveals the board. So the 71/23 is the agent playing team zero roughly 23
+points worse than it needs to, on a position that is close to fair.
+
+Which lands on the same conclusion from the other direction: every PPO figure
+below is measured on one position, and the agent has a seat it plays badly.
 
 Win rate against the four fixed opponents, at the random initialisation and at
 the checkpoint that was saved:
@@ -235,8 +249,29 @@ not, on a different position, at a seventh of the sample size.
 One more thing worth recording rather than celebrating: the saved policy is
 close to **deterministic** on one seat, putting 85% of its mass on a single
 opening action as team zero. In a simultaneous-move game that is normally the
-shape of something exploitable. Nothing here managed to exploit it, but "no
-exploit was found" and "no exploit exists" are different statements.
+shape of something exploitable.
+
+**The solver says it is.** Pointed at that exact position at lookahead 6, the
+equilibrium for team zero is spread across *every one of its six legal actions*:
+
+```
+  solver                          PPO agent
+  switch to mireling    30%       one action     85%
+  sap seed              24%       everything else 15%
+  thorn whip            15%
+  rock smash            15%
+  switch to stonewarden  9%
+  earth spike            7%
+```
+
+Nothing above 30%, and that shape is stable from iteration 400 onward even though
+the exact split is not — the run hit its 50M node budget at 6800 of 8000
+iterations and went memory-bound holding 15M infosets, so the percentages are
+provisional and the *qualitative* answer is not.
+
+So the hole is real and the probe missed it, which is the clearest statement of
+why that 0.0 should not be read as "unexploitable". Two methods disagreed, and
+the one that enumerates beat the one that learns.
 
 ### The solver works
 
@@ -424,16 +459,16 @@ position. Neither is evidence about the other.
   batches may not fix a policy with no gradient to climb; shaping the prober's
   reward, or seeding it from the target's own weights, probably would. Until
   then the 0.0 is uninformative.
-- **`fair_start_battle` is not balanced** — 71/23 to team one when the agent
-  plays itself. The PPO agent is trained and evaluated entirely on it, so the
-  headline 97.5% is a win rate on a board where the seats are not equal. Either
-  balance it or train across several positions.
-- **The near-deterministic opening.** 85% on one action as team zero is the shape
-  of an exploitable policy, and nothing found the exploit. The CFR solver can say
-  what the mixture *should* be on that exact position — a direct check on both
-  halves of the project at once, and cheap, since it is a 3v3 with six actions.
-- **`BotAgent` has no figures**, and `src/agent.json` is dead weight — it cannot
-  load against the current encoder and nothing reads it.
+- **Why does the PPO agent play team zero so badly?** The solver puts that seat's
+  equilibrium value near level and spreads its play across all six actions; the
+  agent loses 23 points from it and plays one action 85% of the time. Training on
+  a single position is the obvious suspect, and training across several would test
+  it.
+- **The lookahead-6 solve did not converge.** It hit the 50M node budget at 6800
+  of 8000 iterations and went memory-bound at 15M infosets, each holding a full
+  cloned `BattleState`. Digesting the infoset key is the fix, and it is also what
+  stands between this and solving six-a-side positions deeper.
+- **`BotAgent` has no figures.**
 - **A 6v6 curriculum for the critic.** Until it trains on positions the size of
   the ones it is asked about, its 6v6 estimates mean nothing.
 - **The depth-3 residual** in the guard sweep sits at −0.012 and is unmoved by
