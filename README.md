@@ -477,6 +477,21 @@ position. Neither is evidence about the other.
 
 ---
 
+## The public mirror
+
+A public repository carries this README, the logs in `results/`, and the rustdoc
+with every rendered source file stripped out — so the design reasoning and the API
+are readable without the implementation. Regenerate it with:
+
+```bash
+./publish-public.sh [path-to-public-repo]
+```
+
+**This repository is canonical for `README.md`.** The mirror gets a banner
+prepended explaining that the source is private, so edits made there are
+overwritten. The script aborts rather than publishing if any reference to rendered
+source survives the strip.
+
 ## Layout
 
 ```
