@@ -1,5 +1,11 @@
 # strat-optimizer
 
+There are famous Pokémon battle bots that study the gameplay of top players and try to mimic their decisions.
+So, I decided to try something new: a poker-style game solver that derives its own strategy from the ground
+up! Given that the current bots rely on analysing top players for their ideas and cannot really come up with
+their own, I was inspired to start this project to see if any unique strategies would make themselves
+apparent. Read along if you want to follow this machine-learning and software-engineering-filled journey!
+
 A Pokémon-style battle engine with **two independent learners** built on top of it:
 
 - **`src/rl/`** — a PPO self-play agent that learns a policy playing well across many positions.
@@ -21,6 +27,7 @@ and none of the belief-state machinery a poker solver needs applies here.
 That also buys something poker solvers cannot have: **exploitability is
 computable rather than estimated**. A best response can be enumerated exactly, so
 "how much would a perfect opponent gain against this?" has a real answer.
+
 
 ---
 
