@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 default-run = "strat-optimizer"
 description = "A Pokemon-style battle engine with two independent learners: a PPO self-play agent, and a CFR solver that takes one matchup and finds unexploitable play in it."
-license = "LicenseRef-Proprietary"
+license-file = "LICENSE"
 publish = false
 
 # The graphical client is opt-in. Everything else — the engine, both learners and
