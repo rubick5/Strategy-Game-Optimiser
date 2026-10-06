@@ -3,9 +3,25 @@ name = "strat-optimizer"
 version = "0.1.0"
 edition = "2021"
 default-run = "strat-optimizer"
+description = "A Pokemon-style battle engine with two independent learners: a PPO self-play agent, and a CFR solver that takes one matchup and finds unexploitable play in it."
+license = "LicenseRef-Proprietary"
+publish = false
+
+# The graphical client is opt-in. Everything else — the engine, both learners and
+# every measurement — builds and tests with no system dependencies at all, which
+# is what keeps `cargo test` working on a machine that has never heard of X11.
+#
+#   cargo run --release --bin game --features gui
+[features]
+default = []
+gui = ["eframe"]
+
+[[bin]]
+name = "game"
+required-features = ["gui"]
 
 [dependencies]
-eframe = "0.36.0"
+eframe = { version = "0.36.0", optional = true }
 rand = "0.9.4"
 rand_distr = "0.5.1"
 serde = { version = "1.0.229", features = ["derive"] }
