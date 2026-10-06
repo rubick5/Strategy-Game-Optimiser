@@ -477,20 +477,12 @@ position. Neither is evidence about the other.
 
 ---
 
-## The public mirror
+## Licence
 
-A public repository carries this README, the logs in `results/`, and the rustdoc
-with every rendered source file stripped out — so the design reasoning and the API
-are readable without the implementation. Regenerate it with:
-
-```bash
-./publish-public.sh [path-to-public-repo]
-```
-
-**This repository is canonical for `README.md`.** The mirror gets a banner
-prepended explaining that the source is private, so edits made there are
-overwritten. The script aborts rather than publishing if any reference to rendered
-source survives the strip.
+All rights reserved — see [LICENSE](LICENSE). The code is published to be read,
+not used: no permission is granted to use, copy, modify or distribute it, and a
+fork is a copy rather than a licence. Read it, learn from it, ask if you want to
+do anything more.
 
 ## Layout
 
